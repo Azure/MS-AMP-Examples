@@ -16,15 +16,15 @@ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from timm.scheduler import create_scheduler
 from timm.optim import create_optimizer
 from timm.utils import NativeScaler, get_state_dict, ModelEma
+import msamp
 
 from datasets import build_dataset
 from engine import train_one_epoch, evaluate
 from losses import DistillationLoss
 from samplers import RASampler
 from augment import new_data_aug_generator
-
+from scaler import NativeScalerWithGradReduce
 import models
-
 import utils
 
 
@@ -180,6 +180,10 @@ def get_args_parser():
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+
+    # msamp parameters
+    parser.add_argument('--enable-msamp', action='store_true', default=False, help='enable MS-AMP')
+    parser.add_argument('--msamp-opt-level', type=str, default='O1', help='MS-AMP optimization level')
     return parser
 
 
@@ -334,8 +338,15 @@ def main(args):
             decay=args.model_ema_decay,
             device='cpu' if args.model_ema_force_cpu else '',
             resume='')
-    #import msamp
-    #msamp.initialize()
+
+    if not args.unscale_lr:
+        linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
+        args.lr = linear_scaled_lr
+    optimizer = create_optimizer(args, model)
+
+    if args.enable_msamp:
+        print(f'msamp is enabled, opt_level: {args.msamp_opt_level}')
+        model, optimizer = msamp.initialize(model, optimizer, args.msamp_opt_level)
 
     model_without_ddp = model
     if args.distributed:
@@ -343,11 +354,8 @@ def main(args):
         model_without_ddp = model.module
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('number of params:', n_parameters)
-    if not args.unscale_lr:
-        linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
-        args.lr = linear_scaled_lr
-    optimizer = create_optimizer(args, model_without_ddp)
-    loss_scaler = NativeScaler()
+    
+    loss_scaler = NativeScalerWithGradReduce()
 
     lr_scheduler, _ = create_scheduler(args, optimizer)
 
