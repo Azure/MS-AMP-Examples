@@ -269,7 +269,9 @@ def main(args):
         img_size=args.input_size
     )
 
-                    
+    if args.enable_msamp:
+        model.head.use_fp32_linear = True
+
     if args.finetune:
         if args.finetune.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(

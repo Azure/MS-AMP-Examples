@@ -47,6 +47,8 @@ def build_model(config, is_pretain = False):
                                 patch_norm=config.MODEL.SWIN.PATCH_NORM,
                                 use_checkpoint=config.TRAIN.USE_CHECKPOINT,
                                 fused_window_process=config.FUSED_WINDOW_PROCESS)
+        if config.ENABLE_MSAMP:
+            model.head.use_fp32_linear = True
     else:
         raise NotImplementedError(f"Unkown model: {model_type}")
 

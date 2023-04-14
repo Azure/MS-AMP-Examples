@@ -106,6 +106,7 @@ def main(config):
     if config.ENABLE_MSAMP:
         logger.info(f"msamp is enabled, opt level is {config.MSAMP_OPT_LEVEL}")
         model, optimizer = msamp.initialize(model, optimizer, config.MSAMP_OPT_LEVEL)
+        logger.info(model)
 
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
     loss_scaler = NativeScalerWithGradNormCount()
