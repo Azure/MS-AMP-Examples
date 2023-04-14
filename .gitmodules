@@ -1,0 +1,8 @@
+[submodule "third_party/Swin-Transformer"]
+	path = third_party/Swin-Transformer
+	url = https://github.com/microsoft/Swin-Transformer.git
+	branch = main
+[submodule "third_party/deit"]
+	path = third_party/deit
+	url = https://github.com/facebookresearch/deit.git
+	branch = main
