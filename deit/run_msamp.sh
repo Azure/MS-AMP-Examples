@@ -7,4 +7,6 @@ python -m torch.distributed.launch \
        --batch-size 128 \
        --data-path $DATA_PATH \
        --output_dir output_msamp \
-       --no-model-ema
+       --no-model-ema \
+       --enable-msamp \
+       --msamp-opt-level O2
