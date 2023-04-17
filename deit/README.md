@@ -1,5 +1,5 @@
-# This is an example of Deit using MS-AMP
-This example, adapted from [Deit]((https://github.com/facebookresearch/deit)), demonstrates how to use ms-amp in a comprehensive training scenario.
+# This is an example of DeiT using MS-AMP
+This example, adapted from [DeiT]((https://github.com/facebookresearch/deit)), demonstrates how to use ms-amp in a comprehensive training scenario.
 
 ## Data preparation
 Download and extract ImageNet train and val images from http://image-net.org/. The directory structure is the standard layout for the torchvision `datasets.ImageFolder`, and the training and validation data is expected to be in the train/ folder and val folder respectively:
@@ -20,15 +20,24 @@ After that, you may need to change the varaible DATA_PATH to the data folder in 
 
 ## Install dependencies
 ```
+cd deit
 pip install -r requirements.txt
 ```
 
-## Run Deit with amp
+## Apply patch to DeiT
+We made a few changes to the official DeiT and packaged it into a patch. You need to apply this patch to third_party/deit.
+```
+cd ../third_party/deit
+git apply ../../deit/deit.patch
+cd -
+```
+
+## Run DeiT with amp
 ```
 sh run.sh
 ```
 
-## Run Deit with msamp
+## Run DeiT with msamp
 ```
 sh run_msamp.sh
 ```

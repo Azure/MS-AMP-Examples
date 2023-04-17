@@ -1,0 +1,131 @@
+diff --git a/engine.py b/engine.py
+index ed10cea..a58f523 100644
+--- a/engine.py
++++ b/engine.py
+@@ -51,7 +51,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+ 
+         # this attribute is added by timm on one optimizer (adahessian)
+         is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
+-        loss_scaler(loss, optimizer, clip_grad=max_norm,
++        loss_scaler(loss, model, optimizer, clip_grad=max_norm,
+                     parameters=model.parameters(), create_graph=is_second_order)
+ 
+         torch.cuda.synchronize()
+diff --git a/main.py b/main.py
+index bc8c418..d798f23 100644
+--- a/main.py
++++ b/main.py
+@@ -15,7 +15,9 @@ from timm.models import create_model
+ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
+ from timm.scheduler import create_scheduler
+ from timm.optim import create_optimizer
+-from timm.utils import NativeScaler, get_state_dict, ModelEma
++from timm.utils import get_state_dict, ModelEma
++import msamp
++from scaler import NativeScalerWithGradReduce
+ 
+ from datasets import build_dataset
+ from engine import train_one_epoch, evaluate
+@@ -181,6 +183,11 @@ def get_args_parser():
+     parser.add_argument('--world_size', default=1, type=int,
+                         help='number of distributed processes')
+     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
++
++    # msamp parameters
++    parser.add_argument('--enable-msamp', action='store_true', default=False, help='enable MS-AMP')
++    parser.add_argument('--msamp-opt-level', type=str, default='O1', help='MS-AMP optimization level')
++
+     return parser
+ 
+ 
+@@ -266,6 +273,8 @@ def main(args):
+         img_size=args.input_size
+     )
+ 
++    if args.enable_msamp:
++        model.head.use_fp32_linear = True
+                     
+     if args.finetune:
+         if args.finetune.startswith('https'):
+@@ -336,17 +345,23 @@ def main(args):
+             device='cpu' if args.model_ema_force_cpu else '',
+             resume='')
+ 
++    if not args.unscale_lr:
++        linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
++        args.lr = linear_scaled_lr
++    optimizer = create_optimizer(args, model)
++
++    if args.enable_msamp:
++        print(f'msamp is enabled, opt_level: {args.msamp_opt_level}')
++        model, optimizer = msamp.initialize(model, optimizer, args.msamp_opt_level)
++
+     model_without_ddp = model
+     if args.distributed:
+         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+         model_without_ddp = model.module
+     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+     print('number of params:', n_parameters)
+-    if not args.unscale_lr:
+-        linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
+-        args.lr = linear_scaled_lr
+-    optimizer = create_optimizer(args, model_without_ddp)
+-    loss_scaler = NativeScaler()
++
++    loss_scaler = NativeScalerWithGradReduce()
+ 
+     lr_scheduler, _ = create_scheduler(args, optimizer)
+ 
+@@ -434,7 +449,7 @@ def main(args):
+                     'optimizer': optimizer.state_dict(),
+                     'lr_scheduler': lr_scheduler.state_dict(),
+                     'epoch': epoch,
+-                    'model_ema': get_state_dict(model_ema),
++                    'model_ema': get_state_dict(model_ema) if model_ema else None,
+                     'scaler': loss_scaler.state_dict(),
+                     'args': args,
+                 }, checkpoint_path)
+@@ -453,7 +468,7 @@ def main(args):
+                         'optimizer': optimizer.state_dict(),
+                         'lr_scheduler': lr_scheduler.state_dict(),
+                         'epoch': epoch,
+-                        'model_ema': get_state_dict(model_ema),
++                        'model_ema': get_state_dict(model_ema) if model_ema else None,
+                         'scaler': loss_scaler.state_dict(),
+                         'args': args,
+                     }, checkpoint_path)
+diff --git a/scaler.py b/scaler.py
+new file mode 100644
+index 0000000..dba0819
+--- /dev/null
++++ b/scaler.py
+@@ -0,0 +1,28 @@
++
++import torch
++from msamp import clip_grad_norm_
++
++
++class NativeScalerWithGradReduce:
++    state_dict_key = "amp_scaler"
++
++    def __init__(self):
++        self._scaler = torch.cuda.amp.GradScaler()
++
++    def __call__(self, loss, model, optimizer, clip_grad=None, clip_mode='norm', parameters=None, create_graph=False):
++        self._scaler.scale(loss).backward(create_graph=create_graph)
++        if hasattr(optimizer, 'all_reduce_grads'):
++            optimizer.all_reduce_grads(model)
++        if clip_grad is not None:
++            assert parameters is not None
++            self._scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
++            assert clip_mode == 'norm'
++            clip_grad_norm_(parameters, clip_grad)
++        self._scaler.step(optimizer)
++        self._scaler.update()
++
++    def state_dict(self):
++        return self._scaler.state_dict()
++
++    def load_state_dict(self, state_dict):
++        self._scaler.load_state_dict(state_dict)
+\ No newline at end of file
