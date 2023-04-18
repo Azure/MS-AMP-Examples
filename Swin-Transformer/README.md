@@ -1,5 +1,5 @@
 # This is an example of Swin-Transformer using MS-AMP
-This example, adapted from [Swin-Transformer](https://github.com/microsoft/Swin-Transformer), demonstrates how to use MS-AMP in a comprehensive training scenario.
+This example demonstrates how to use MS-AMP in [Swin-Transformer](https://github.com/microsoft/Swin-Transformer).
 
 ## Data preparation
 We use standard ImageNet dataset, you can download it from http://image-net.org/. The file structure should look like:

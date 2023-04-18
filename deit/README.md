@@ -1,8 +1,8 @@
 # This is an example of DeiT using MS-AMP
-This example, adapted from [DeiT](https://github.com/facebookresearch/deit), demonstrates how to use MS-AMP in a comprehensive training scenario.
+This example demonstrates how to use MS-AMP in [DeiT](https://github.com/facebookresearch/deit).
 
 ## Data preparation
-Download and extract ImageNet train and val images from http://image-net.org/. The directory structure is the standard layout for the torchvision `datasets.ImageFolder`, and the training and validation data is expected to be in the train folder and val folder respectively:
+Before training, please download and extract ImageNet train and val images from http://image-net.org/. The directory structure is the standard layout for the torchvision `datasets.ImageFolder`, and the training and validation data are expected to be in the train folder and val folder respectively:
 ```
 /path/to/imagenet/
   train/
@@ -49,7 +49,7 @@ Run the following command to train a large DeiT model using AMP. The model has 1
 ```
 sh run.sh large amp
 ```
-## Train Deit-Large model with MS-AMP
+## Train DeiT-Large model with MS-AMP
 Run the following command to train a large DeiT model using MS-AMP. You can observe significant GPU memory saving using `nvidia-smi` compared with AMP.
 ```
 sh run.sh large msamp
