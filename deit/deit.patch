@@ -94,6 +94,34 @@ index bc8c418..d798f23 100644
                          'scaler': loss_scaler.state_dict(),
                          'args': args,
                      }, checkpoint_path)
+diff --git a/models.py b/models.py
+index 5b22ef3..9919678 100644
+--- a/models.py
++++ b/models.py
+@@ -10,7 +10,7 @@ from timm.models.layers import trunc_normal_
+ 
+ 
+ __all__ = [
+-    'deit_tiny_patch16_224', 'deit_small_patch16_224', 'deit_base_patch16_224',
++    'deit_tiny_patch16_224', 'deit_small_patch16_224', 'deit_base_patch16_224', 'deit_large_patch16_224',
+     'deit_tiny_distilled_patch16_224', 'deit_small_distilled_patch16_224',
+     'deit_base_distilled_patch16_224', 'deit_base_patch16_384',
+     'deit_base_distilled_patch16_384',
+@@ -103,6 +103,14 @@ def deit_base_patch16_224(pretrained=False, **kwargs):
+         model.load_state_dict(checkpoint["model"])
+     return model
+ 
++@register_model
++def deit_large_patch16_224(pretrained=False, **kwargs):
++    model = VisionTransformer(
++        patch_size=16, embed_dim=2048, depth=24, num_heads=32, mlp_ratio=4, qkv_bias=True,
++        norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
++    assert not pretrained
++    model.default_cfg = _cfg()
++    return model
+ 
+ @register_model
+ def deit_tiny_distilled_patch16_224(pretrained=False, **kwargs):
 diff --git a/scaler.py b/scaler.py
 new file mode 100644
 index 0000000..dba0819

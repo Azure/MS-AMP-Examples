@@ -32,12 +32,25 @@ git apply ../../deit/deit.patch
 cd -
 ```
 
-## Run DeiT with AMP
+## Run DeiT-Small with AMP
+Run the following command to train a small DeiT model using AMP.
 ```
 sh run.sh
 ```
 
-## Run DeiT with MS-AMP
+## Run DeiT-Small with MS-AMP
+Run the following command to train a small DeiT model using MS-AMP.
 ```
 sh run_msamp.sh
+```
+
+## Run DeiT-Large with AMP
+Run the following command to train a large DeiT model using AMP. The model has 1.3 billion parameters.
+```
+sh run_large.sh
+```
+## Run Deit-Large with MS-AMP
+Run the following command to train a large DeiT model using MS-AMP. You can observe significant GPU memory saving using `nvidia-smi` compared with AMP.
+```
+sh run_large_msamp.sh
 ```
