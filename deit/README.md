@@ -19,6 +19,7 @@ Before training, please download and extract ImageNet train and val images from 
 After that, you may need to change the varaible DATA_PATH to the data folder in launch script.
 
 ## Install dependencies
+You need to install depedencies before training DeiT. It is recommended to use venv for virtual environments, but it is not strictly necessary.
 ```
 cd deit
 pip install -r requirements.txt
