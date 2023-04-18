@@ -44,23 +44,23 @@ cd -
 ## Train Swin-Transformer tiny model with AMP
 Run the following command to train a tiny Swin-Transformer model using AMP.
 ```
-sh run.sh
+sh run.sh tiny amp
 ```
 
 ## Train Swin-Transformer tiny model with MS-AMP
 Run the following command to train a tiny Swin-Transformer model using MS-AMP.
 ```
-sh run_msamp.sh
+sh run.sh tiny msamp
 ```
 
 ## Train Swin-Transformer giant model with AMP
 Run the following command to train a giant Swin-Transformer model using AMP.
 ```
-sh run_giant.sh
+sh run.sh giant amp
 ```
 
 ## Train Swin-Transformer giant model with MS-AMP
 Run the following command to train a giant Swin-Transformer model using MS-AMP. You can observe significant GPU memory saving using `nvidia-smi` compared with AMP.
 ```
-sh run_giant_msamp.sh
+sh run.sh giant msamp
 ```

@@ -35,22 +35,22 @@ cd -
 ## Train DeiT-Small model with AMP
 Run the following command to train a small DeiT model using AMP.
 ```
-sh run.sh
+sh run.sh small amp
 ```
 
 ## Train DeiT-Small model with MS-AMP
 Run the following command to train a small DeiT model using MS-AMP.
 ```
-sh run_msamp.sh
+sh run.sh small msamp
 ```
 
 ## Train DeiT-Large model with AMP
 Run the following command to train a large DeiT model using AMP. The model has 1.3 billion parameters.
 ```
-sh run_large.sh
+sh run.sh large amp
 ```
 ## Train Deit-Large model with MS-AMP
 Run the following command to train a large DeiT model using MS-AMP. You can observe significant GPU memory saving using `nvidia-smi` compared with AMP.
 ```
-sh run_large_msamp.sh
+sh run.sh large msamp
 ```
