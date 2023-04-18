@@ -25,6 +25,22 @@ index 1671ec3..3bcac6d 100644
      # set local rank for distributed training
      config.LOCAL_RANK = args.local_rank
  
+diff --git a/configs/swin/swin_giant_patch4_window7_224.yaml b/configs/swin/swin_giant_patch4_window7_224.yaml
+new file mode 100644
+index 0000000..67b4476
+--- /dev/null
++++ b/configs/swin/swin_giant_patch4_window7_224.yaml
+@@ -0,0 +1,9 @@
++MODEL:
++  TYPE: swin
++  NAME: swin_giant_patch4_window7_224
++  DROP_PATH_RATE: 0.5
++  SWIN:
++    EMBED_DIM: 448
++    DEPTHS: [ 2, 2, 18, 2 ]
++    NUM_HEADS: [ 14, 28, 56, 112 ]
++    WINDOW_SIZE: 7
+\ No newline at end of file
 diff --git a/main.py b/main.py
 index 84230ea..08df50e 100644
 --- a/main.py

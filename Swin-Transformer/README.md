@@ -41,12 +41,26 @@ git apply ../../Swin-Transformer/Swin-Transformer.patch
 cd -
 ```
 
-## Run Swin-Transformer with AMP
+## Train Swin-Transformer tiny model with AMP
+Run the following command to train a tiny Swin-Transformer model using AMP.
 ```
 sh run.sh
 ```
 
-## Run Swin-Transformer with MS-AMP
+## Train Swin-Transformer tiny model with MS-AMP
+Run the following command to train a tiny Swin-Transformer model using MS-AMP.
 ```
 sh run_msamp.sh
+```
+
+## Train Swin-Transformer giant model with AMP
+Run the following command to train a giant Swin-Transformer model using AMP.
+```
+sh run_giant.sh
+```
+
+## Train Swin-Transformer giant model with MS-AMP
+Run the following command to train a giant Swin-Transformer model using MS-AMP. You can observe significant GPU memory saving using `nvidia-smi` compared with AMP.
+```
+sh run_giant_msamp.sh
 ```
