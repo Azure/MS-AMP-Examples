@@ -28,6 +28,7 @@ if [ "$model" == "small" -a "$amp_type" == "amp" ]; then
        --batch-size 128 \
        --data-path $DATA_PATH \
        --output_dir output \
+       --eval-dist \
        --no-model-ema
 elif [ "$model" == "small" -a "$amp_type" == "msamp" ]; then
     echo "run small DeiT with MS-AMP"
@@ -38,6 +39,7 @@ elif [ "$model" == "small" -a "$amp_type" == "msamp" ]; then
        --batch-size 128 \
        --data-path $DATA_PATH \
        --output_dir output_msamp \
+       --eval-dist \
        --no-model-ema \
        --enable-msamp \
        --msamp-opt-level O2
