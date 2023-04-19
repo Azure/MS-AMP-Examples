@@ -28,7 +28,7 @@ if [ "$model" == "small" -a "$amp_type" == "amp" ]; then
        --batch-size 128 \
        --data-path $DATA_PATH \
        --output_dir output \
-       --eval-dist \
+       --dist-eval \
        --no-model-ema
 elif [ "$model" == "small" -a "$amp_type" == "msamp" ]; then
     echo "run small DeiT with MS-AMP"
@@ -39,7 +39,7 @@ elif [ "$model" == "small" -a "$amp_type" == "msamp" ]; then
        --batch-size 128 \
        --data-path $DATA_PATH \
        --output_dir output_msamp \
-       --eval-dist \
+       --dist-eval \
        --no-model-ema \
        --enable-msamp \
        --msamp-opt-level O2
@@ -53,7 +53,7 @@ elif [ "$model" == "large" -a "$amp_type" == "amp" ]; then
        --batch-size 64 \
        --data-path $DATA_PATH \
        --output_dir output_large \
-       --eval-dist \
+       --dist-eval \
        --no-model-ema
 elif [ "$model" == "large" -a "$amp_type" == "msamp" ]; then
     echo "run large DeiT with MS-AMP"
@@ -65,7 +65,7 @@ elif [ "$model" == "large" -a "$amp_type" == "msamp" ]; then
        --batch-size 64 \
        --data-path $DATA_PATH \
        --output_dir output_large_msamp \
-       --eval-dist \
+       --dist-eval \
        --no-model-ema \
        --enable-msamp \
        --msamp-opt-level O2
