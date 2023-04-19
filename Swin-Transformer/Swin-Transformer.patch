@@ -1,0 +1,130 @@
+diff --git a/config.py b/config.py
+index 1671ec3..3bcac6d 100644
+--- a/config.py
++++ b/config.py
+@@ -260,6 +260,9 @@ _C.LOCAL_RANK = 0
+ _C.FUSED_WINDOW_PROCESS = False
+ _C.FUSED_LAYERNORM = False
+ 
++# ms-amp
++_C.ENABLE_MSAMP = False
++_C.MSAMP_OPT_LEVEL = 'O2'
+ 
+ def _update_config_from_file(config, cfg_file):
+     config.defrost()
+@@ -333,6 +336,12 @@ def update_config(config, args):
+     if _check_args('optim'):
+         config.TRAIN.OPTIMIZER.NAME = args.optim
+ 
++    ## msamp
++    if _check_args('enable_msamp'):
++        config.ENABLE_MSAMP = args.enable_msamp
++    if _check_args('msamp_opt_level'):
++        config.MSAMP_OPT_LEVEL = args.msamp_opt_level
++
+     # set local rank for distributed training
+     config.LOCAL_RANK = args.local_rank
+ 
+diff --git a/configs/swin/swin_giant_patch4_window7_224.yaml b/configs/swin/swin_giant_patch4_window7_224.yaml
+new file mode 100644
+index 0000000..67b4476
+--- /dev/null
++++ b/configs/swin/swin_giant_patch4_window7_224.yaml
+@@ -0,0 +1,9 @@
++MODEL:
++  TYPE: swin
++  NAME: swin_giant_patch4_window7_224
++  DROP_PATH_RATE: 0.5
++  SWIN:
++    EMBED_DIM: 448
++    DEPTHS: [ 2, 2, 18, 2 ]
++    NUM_HEADS: [ 14, 28, 56, 112 ]
++    WINDOW_SIZE: 7
+\ No newline at end of file
+diff --git a/main.py b/main.py
+index 84230ea..08df50e 100644
+--- a/main.py
++++ b/main.py
+@@ -19,6 +19,7 @@ import torch.distributed as dist
+ 
+ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
+ from timm.utils import accuracy, AverageMeter
++import msamp
+ 
+ from config import get_config
+ from models import build_model
+@@ -73,6 +74,9 @@ def parse_option():
+     ## overwrite optimizer in config (*.yaml) if specified, e.g., fused_adam/fused_lamb
+     parser.add_argument('--optim', type=str,
+                         help='overwrite optimizer if provided, can be adamw/sgd/fused_adam/fused_lamb.')
++    # ms-amp
++    parser.add_argument('--enable-msamp', action='store_true', default=False, help='enable MS-AMP')
++    parser.add_argument('--msamp-opt-level', type=str, default='O1', help='MS-AMP optimization level')
+ 
+     args, unparsed = parser.parse_known_args()
+ 
+@@ -98,6 +102,11 @@ def main(config):
+     model_without_ddp = model
+ 
+     optimizer = build_optimizer(config, model)
++    if config.ENABLE_MSAMP:
++        logger.info(f"msamp is enabled, opt level is {config.MSAMP_OPT_LEVEL}")
++        model, optimizer = msamp.initialize(model, optimizer, config.MSAMP_OPT_LEVEL)
++        logger.info(model)
++
+     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
+     loss_scaler = NativeScalerWithGradNormCount()
+ 
+@@ -191,7 +200,7 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+ 
+         # this attribute is added by timm on one optimizer (adahessian)
+         is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
+-        grad_norm = loss_scaler(loss, optimizer, clip_grad=config.TRAIN.CLIP_GRAD,
++        grad_norm = loss_scaler(loss, model, optimizer, clip_grad=config.TRAIN.CLIP_GRAD,
+                                 parameters=model.parameters(), create_graph=is_second_order,
+                                 update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
+         if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
+diff --git a/models/build.py b/models/build.py
+index c37384d..a8ccc65 100644
+--- a/models/build.py
++++ b/models/build.py
+@@ -50,6 +50,8 @@ def build_model(config, is_pretrain=False):
+                                 patch_norm=config.MODEL.SWIN.PATCH_NORM,
+                                 use_checkpoint=config.TRAIN.USE_CHECKPOINT,
+                                 fused_window_process=config.FUSED_WINDOW_PROCESS)
++        if config.ENABLE_MSAMP:
++            model.head.use_fp32_linear = True
+     elif model_type == 'swinv2':
+         model = SwinTransformerV2(img_size=config.DATA.IMG_SIZE,
+                                   patch_size=config.MODEL.SWINV2.PATCH_SIZE,
+diff --git a/utils.py b/utils.py
+index eb607cf..8711a44 100644
+--- a/utils.py
++++ b/utils.py
+@@ -9,7 +9,7 @@ import os
+ import torch
+ import torch.distributed as dist
+ from torch._six import inf
+-
++from msamp import clip_grad_norm_
+ 
+ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger):
+     logger.info(f"==============> Resuming form {config.MODEL.RESUME}....................")
+@@ -198,13 +198,15 @@ class NativeScalerWithGradNormCount:
+     def __init__(self):
+         self._scaler = torch.cuda.amp.GradScaler()
+ 
+-    def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
++    def __call__(self, loss, model, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
+         self._scaler.scale(loss).backward(create_graph=create_graph)
+         if update_grad:
+             if clip_grad is not None:
++                if hasattr(optimizer, 'all_reduce_grads'):
++                    optimizer.all_reduce_grads(model)
+                 assert parameters is not None
+                 self._scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+-                norm = torch.nn.utils.clip_grad_norm_(parameters, clip_grad)
++                norm = clip_grad_norm_(parameters, clip_grad)
+             else:
+                 self._scaler.unscale_(optimizer)
+                 norm = ampscaler_get_grad_norm(parameters)

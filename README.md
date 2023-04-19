@@ -1,14 +1,21 @@
-# Project
+# MS-AMP Examples
+This repository contains various training examples including [DeiT](https://github.com/facebookresearch/deit) and [Swin-Transformer](https://github.com/microsoft/Swin-Transformer) that use [MS-AMP](https://github.com/Azure/MS-AMP).
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+# Get started
 
-As the maintainer of this project, please make a few updates:
+## Prerequisites
+In order to run examples in this repository, you need to install MS-AMP first, and  then clone the repository and submodule with the following command:
+```
+git clone https://github.com/Azure/MS-AMP-Examples.git
+cd MS-AMP-Examples
+git submodule update --init --recursive
+```
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+## Swin-Transformer
+This folder contains end-to-end training of [Swin-Transformer](https://github.com/microsoft/Swin-Transformer) model using MS-AMP.
+
+## DeiT
+This folder contains end-to-end training of [DeiT](https://github.com/facebookresearch/deit) model using MS-AMP.
 
 ## Contributing
 
