@@ -1,0 +1,164 @@
+diff --git a/fairseq/dataclass/configs.py b/fairseq/dataclass/configs.py
+index 5fdfab38..e444294c 100644
+--- a/fairseq/dataclass/configs.py
++++ b/fairseq/dataclass/configs.py
+@@ -250,7 +250,12 @@ class CommonConfig(FairseqDataclass):
+             "help": "path to run plasma_store, defaults to /tmp/plasma. Paths outside /tmp tend to fail."
+         },
+     )
+-
++    # MS-AMP config
++    msamp: bool = field(default=False, metadata={"help": "use microsoft automatic mixed precision"})
++    msamp_opt_level: str = field(
++        default="O1",
++        metadata={"help": "microsoft automatic mixed precision optimization level"},
++    )
+ 
+ @dataclass
+ class DistributedTrainingConfig(FairseqDataclass):
+diff --git a/fairseq/models/roberta/model.py b/fairseq/models/roberta/model.py
+index d7ced919..02ce8e4f 100644
+--- a/fairseq/models/roberta/model.py
++++ b/fairseq/models/roberta/model.py
+@@ -473,6 +473,7 @@ class RobertaLMHead(nn.Module):
+     def __init__(self, embed_dim, output_dim, activation_fn, weight=None):
+         super().__init__()
+         self.dense = nn.Linear(embed_dim, embed_dim)
++        self.dense.use_fp32_linear = True
+         self.activation_fn = utils.get_activation_fn(activation_fn)
+         self.layer_norm = LayerNorm(embed_dim)
+ 
+diff --git a/fairseq/optim/adam.py b/fairseq/optim/adam.py
+index 678ec7c6..de4fea2e 100644
+--- a/fairseq/optim/adam.py
++++ b/fairseq/optim/adam.py
+@@ -16,7 +16,7 @@ from fairseq.dataclass import FairseqDataclass
+ from fairseq.optim import FairseqOptimizer, register_optimizer
+ from fairseq.optim.fused_adam import get_fused_adam_class
+ from omegaconf import II, OmegaConf
+-
++import msamp
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -39,6 +39,7 @@ class FairseqAdamConfig(FairseqDataclass):
+     # TODO common vars below in parent
+     tpu: bool = II("common.tpu")
+     lr: List[float] = II("optimization.lr")
++    msamp: bool = II("common.msamp")
+ 
+ 
+ @register_optimizer("adam", dataclass=FairseqAdamConfig)
+@@ -58,7 +59,11 @@ class FairseqAdam(FairseqOptimizer):
+             and fused_adam_cls is not None
+             and torch.cuda.is_available()
+         )
+-        if getattr(cfg, "tpu", False):
++
++        if cfg.msamp:
++            logger.info("using LBAdamW")
++            self._optimizer = LBAdamW(params, **self.optimizer_config)
++        elif getattr(cfg, "tpu", False):
+             if self.cfg.fp16_adam_stats:
+                 raise NotImplementedError("--fp16-adam-stats is only supported on GPU")
+             # on TPUs we use the Adam defined here, since it
+@@ -106,6 +111,10 @@ class FairseqAdam(FairseqOptimizer):
+             dist.all_reduce(value["exp_avg"], op=dist.ReduceOp.SUM)
+             dist.all_reduce(value["exp_avg_sq"], op=dist.ReduceOp.SUM)
+ 
++    def all_reduce_grads(self, model):
++        if self.cfg.msamp and hasattr(self._optimizer, "all_reduce_grads"):
++            self._optimizer.all_reduce_grads(model)
++        super().all_reduce_grads(model)
+ 
+ class Adam(torch.optim.Optimizer):
+     r"""Implements Adam algorithm.
+@@ -237,3 +246,28 @@ class Adam(torch.optim.Optimizer):
+                     p.data.copy_(p_data_fp32)
+ 
+         return loss
++
++class LBAdamW(msamp.LBAdamW):
++    def __init__(
++        self,
++        params,
++        lr=1e-3,
++        betas=(0.9, 0.999),
++        eps=1e-8,
++        weight_decay=0,
++        amsgrad=False,
++    ):
++        defaults = dict(
++            lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad
++        )
++        super().__init__(params, **defaults)
++
++    @property
++    def supports_memory_efficient_fp16(self):
++        # DO NOT USE MemoryEfficientFP16Optimizer
++        return False
++
++    @property
++    def supports_flat_params(self):
++        # since FP16 params with different scaling factor
++        return False
+diff --git a/fairseq/optim/fairseq_optimizer.py b/fairseq/optim/fairseq_optimizer.py
+index 7e541175..5fff9e04 100644
+--- a/fairseq/optim/fairseq_optimizer.py
++++ b/fairseq/optim/fairseq_optimizer.py
+@@ -7,6 +7,7 @@ import torch
+ from fairseq import utils
+ from fairseq.dataclass.utils import gen_parser_from_dataclass
+ 
++import msamp
+ 
+ class FairseqOptimizer(object):
+     def __init__(self, cfg):
+@@ -109,6 +110,8 @@ class FairseqOptimizer(object):
+ 
+     def clip_grad_norm(self, max_norm, aggregate_norm_fn=None):
+         """Clips gradient norm."""
++        if hasattr(self.cfg, "msamp") and self.cfg.msamp:
++            return msamp.clip_grad_norm_(self.params, max_norm)
+         return utils.clip_grad_norm_(self.params, max_norm, aggregate_norm_fn)
+ 
+     def step(self, closure=None, scale=1.0, groups=None):
+diff --git a/fairseq/trainer.py b/fairseq/trainer.py
+index da1f9491..ec6e1732 100644
+--- a/fairseq/trainer.py
++++ b/fairseq/trainer.py
+@@ -18,6 +18,7 @@ from typing import Any, Dict, List
+ 
+ import torch
+ from omegaconf import OmegaConf
++import msamp
+ 
+ from fairseq import checkpoint_utils, models, optim, utils
+ from fairseq.dataclass.configs import FairseqConfig
+@@ -115,6 +116,14 @@ class Trainer(object):
+         ):
+             self._criterion = self._criterion.to(device=self.device)
+             self._model = self._model.to(device=self.device)
++
++        if self.cfg.common.msamp:
++            logger.info(f"msamp is enabled, opt level is {self.cfg.common.msamp_opt_level}")
++            assert self._model is not None
++            self._model = msamp.nn.LinearReplacer.replace(self._model)
++            # self._model, _ = msamp.initialize(self._model, None, self.cfg.common.msamp_opt_level)
++            logger.info(f"FP8 model is: {self._model}")
++
+         self.pipeline_model_parallel = cfg.distributed_training.pipeline_model_parallel
+         self.last_device = None
+         if self.cuda and self.pipeline_model_parallel:
+diff --git a/setup.py b/setup.py
+index 8a9b2f97..1bc5650d 100644
+--- a/setup.py
++++ b/setup.py
+@@ -187,7 +187,6 @@ def do_setup(package_data):
+             "torch>=1.10",
+             "tqdm",
+             "bitarray",
+-            "torchaudio>=0.8.0",
+         ],
+         extras_require={
+             "dev": ["flake8", "pytest", "black==22.3.0"],
