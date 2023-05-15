@@ -25,7 +25,7 @@ if [ "$amp_type" == "amp" ]; then
         --use_env \
         --nproc_per_node=$GPU_NUM \
         $fairseq_train \
-        --config-dir examples/roberta/config/pretraining \
+        --config-dir ../third_party/fairseq/examples/roberta/config/pretraining \
         --config-name base  \
         task.data=$DATA_PATH \
         checkpoint.save_dir=$SAVE_PATH \
