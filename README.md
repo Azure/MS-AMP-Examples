@@ -1,5 +1,5 @@
 # MS-AMP Examples
-This repository contains various training examples including [DeiT](https://github.com/facebookresearch/deit) and [Swin-Transformer](https://github.com/microsoft/Swin-Transformer) that use [MS-AMP](https://github.com/Azure/MS-AMP).
+This repository contains various training examples including [DeiT](https://github.com/facebookresearch/deit), [Swin-Transformer](https://github.com/microsoft/Swin-Transformer) and [RoBERTa](https://github.com/facebookresearch/fairseq/blob/main/examples/roberta/README.md) that use [MS-AMP](https://github.com/Azure/MS-AMP).
 
 # Get started
 
@@ -16,6 +16,9 @@ This folder contains end-to-end training of [Swin-Transformer](https://github.co
 
 ## DeiT
 This folder contains end-to-end training of [DeiT](https://github.com/facebookresearch/deit) model using MS-AMP.
+
+## RoBERTa
+This folder contains end-to-end training of [RoBERTa](https://github.com/facebookresearch/fairseq/blob/main/examples/roberta/README.md) model using MS-AMP.
 
 ## Contributing
 
