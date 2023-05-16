@@ -38,7 +38,7 @@ You need to install fairseq before training RoBERTa. It is recommended to use ve
 pip install --no-build-isolation -v -e .
 cd -
 ```
-You can verify if the installation of fairseq by executing `python -c "import fairseq; print(fairseq.__version__)"`.
+You can verify if the installation of fairseq is successful by executing `python -c "import fairseq; print(fairseq.__version__)"`.
 
 ## Train RoBERTa model with AMP
 Run the following command to train RoBERTa base model using AMP:
