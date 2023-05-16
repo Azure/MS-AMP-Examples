@@ -1,5 +1,5 @@
 # This is an example of RoBERTa using MS-AMP
-This example demonstrates how to MS-AMP in [RoBERTa](https://github.com/facebookresearch/fairseq/blob/main/examples/roberta/README.md).
+This example demonstrates how to use MS-AMP in [RoBERTa](https://github.com/facebookresearch/fairseq/blob/main/examples/roberta/README.md).
 
 ## Data preparation
 Currently we haven't published the data we use in this example. You can use public dataset such as [WikiText-103 dataset](https://www.salesforce.com/products/einstein/ai-research/the-wikitext-dependency-language-modeling-dataset/) or your own data. Please see the [tutorial for pretraining RoBERTa using your own data](https://github.com/facebookresearch/fairseq/blob/main/examples/roberta/README.pretraining.md).
