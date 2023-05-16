@@ -5,37 +5,63 @@
 
 set -e
 
-if [ -d "data-bin" ]
-then
-    rm -rf data-bin
+USAGE="usage: bash run.sh [amp|msamp]"
+
+if [ "$#" -ne 1 ]; then
+  echo $USAGE
+  exit 1
 fi
 
-wget https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-raw-v1.zip
-unzip wikitext-103-raw-v1.zip
+DATA_PATH=$PWD/data-bin/wikitext-103
+GPU_NUM=4
+amp_type=$1
+fairseq_train=`which fairseq-hydra-train`
 
-mkdir -p gpt2_bpe
-wget -O gpt2_bpe/encoder.json https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/encoder.json
-wget -O gpt2_bpe/vocab.bpe https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/vocab.bpe
-for SPLIT in train valid test; do \
-    python -m examples.roberta.multiprocessing_bpe_encoder \
-        --encoder-json gpt2_bpe/encoder.json \
-        --vocab-bpe gpt2_bpe/vocab.bpe \
-        --inputs wikitext-103-raw/wiki.${SPLIT}.raw \
-        --outputs wikitext-103-raw/wiki.${SPLIT}.bpe \
-        --keep-empty \
-        --workers 60; \
-done
+if [ "$amp_type" == "amp" ]; then
+    echo "run RoBERTa base with AMP"
+    SAVE_PATH=$PWD/checkpoints/roberta_amp/
 
+    python -m torch.distributed.launch \
+        --use_env \
+        --nproc_per_node=$GPU_NUM \
+        $fairseq_train \
+        --config-dir ../third_party/fairseq/examples/roberta/config/pretraining \
+        --config-name base  \
+        task.data=$DATA_PATH \
+        checkpoint.save_dir=$SAVE_PATH \
+        dataset.skip_invalid_size_inputs_valid_test=True \
+        dataset.batch_size=64 \
+        optimization.update_freq=[8] \
+        common.fp16=False \
+        common.amp=True \
+        checkpoint.save_interval_updates=500 \
+        common.log_interval=20 \
+        dataset.validate_interval_updates=500 \
+        distributed_training.ddp_backend=c10d
 
-wget -O gpt2_bpe/dict.txt https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/dict.txt
-fairseq-preprocess \
-    --only-source \
-    --srcdict gpt2_bpe/dict.txt \
-    --trainpref wikitext-103-raw/wiki.train.bpe \
-    --validpref wikitext-103-raw/wiki.valid.bpe \
-    --testpref wikitext-103-raw/wiki.test.bpe \
-    --destdir data-bin/wikitext-103 \
-    --workers 60
-
-rm -rf gpt2_bpe
-rm -rf wikitext-103-raw*
+elif [ "$amp_type" == "msamp" ]; then
+    echo "run RoBERTa base with MS-AMP"
+    SAVE_PATH=$PWD/checkpoints/roberta_msamp/
+    python -m torch.distributed.launch \
+        --use_env \
+        --nproc_per_node=$GPU_NUM \
+        $fairseq_train \
+        --config-dir ../third_party/fairseq/examples/roberta/config/pretraining \
+        --config-name base  \
+        task.data=$DATA_PATH \
+        checkpoint.save_dir=$SAVE_PATH \
+        dataset.skip_invalid_size_inputs_valid_test=True \
+        dataset.batch_size=64 \
+        optimization.update_freq=[8] \
+        common.fp16=False \
+        common.amp=True \
+        checkpoint.save_interval_updates=500 \
+        common.log_interval=20 \
+        dataset.validate_interval_updates=500 \
+        common.msamp=True \
+        common.msamp_opt_level=O2 \
+        distributed_training.ddp_backend=c10d
+else
+    echo $USAGE
+    exit 1
+fi

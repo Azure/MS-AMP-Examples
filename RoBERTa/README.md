@@ -26,7 +26,7 @@ data-bin/
 If you use your own data, don't forget to change the variable DATA_PATH to the data folder in launch script.
 
 ## Apply patch to fairseq
-We made a few changes to the official [failseq](https://github.com/facebookresearch/fairseq) and packaged it into a patch. You need to apply this patch to third_party/fairseq.
+We made a few changes to the official [fairseq](https://github.com/facebookresearch/fairseq) and packaged it into a patch. You need to apply this patch to third_party/fairseq.
 ```
 cd ../third_party/fairseq
 git apply ../../RoBERTa/fairseq.patch
