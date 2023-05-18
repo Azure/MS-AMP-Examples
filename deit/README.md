@@ -50,6 +50,13 @@ Run the following command to train a large DeiT model using AMP. The model has 1
 ```
 sh run.sh large amp
 ```
+
+## Train DeiT-Large model with TE
+Run the following command to train a large DeiT model using Transformer Engine.
+```
+sh run.sh large te-fp8
+```
+
 ## Train DeiT-Large model with MS-AMP
 Run the following command to train a large DeiT model using MS-AMP. You can observe significant GPU memory saving using `nvidia-smi` compared with AMP.
 ```
