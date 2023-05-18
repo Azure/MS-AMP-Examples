@@ -52,7 +52,7 @@ sh run.sh large amp
 ```
 
 ## Train DeiT-Large model with TE
-Run the following command to train a large DeiT model using Transformer Engine.
+Run the following command to train a large DeiT model using FP8 in Transformer Engine.
 ```
 sh run.sh large te-fp8
 ```

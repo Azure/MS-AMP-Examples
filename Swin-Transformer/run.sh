@@ -5,7 +5,7 @@
 
 set -e
 
-USAGE="usage: bash run.sh [tiny|giant] [amp|msamp]"
+USAGE="usage: bash run.sh [tiny|giant] [amp|msamp|te-fp8]"
 
 if [ "$#" -ne 2 ]; then
   echo $USAGE
@@ -63,6 +63,17 @@ elif [ "$model" == "giant" -a "$amp_type" == "msamp" ]; then
         --output output_giant_msamp \
         --enable-msamp \
         --msamp-opt-level O2
+elif [ "$model" == "giant" -a "$amp_type" == "te-fp8" ]; then
+    echo "run giant Swin-Transformer with Transformer Engine FP8"
+    python -m torch.distributed.launch \
+        --nproc_per_node $GPU_NUM \
+        --master_port $MASTER_PORT  \
+        ../third_party/Swin-Transformer/main.py \
+        --cfg ../third_party/Swin-Transformer/configs/swin/swin_giant_patch4_window7_224.yaml \
+        --data-path $DATA_PATH \
+        --batch-size 16 \
+        --output output_giant_tefp8 \
+        --enable-tefp8
 else
     echo $USAGE
     exit 1
