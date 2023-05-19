@@ -60,6 +60,12 @@ Run the following command to train a giant Swin-Transformer model using AMP.
 sh run.sh giant amp
 ```
 
+## Train Swin-Transformer giant model with TE
+Run the following command to train a giant Swin-Transformer model using FP8 in Transformer Engine.
+```
+sh run.sh giant te-fp8
+```
+
 ## Train Swin-Transformer giant model with MS-AMP
 Run the following command to train a giant Swin-Transformer model using MS-AMP. You can observe significant GPU memory saving using `nvidia-smi` compared with AMP.
 ```

@@ -5,7 +5,7 @@
 
 set -e
 
-USAGE="usage: bash run.sh [small|large] [amp|msamp]"
+USAGE="usage: bash run.sh [small|large] [amp|msamp|te-fp8]"
 
 if [ "$#" -ne 2 ]; then
   echo $USAGE
@@ -65,6 +65,18 @@ elif [ "$model" == "large" -a "$amp_type" == "msamp" ]; then
        --no-model-ema \
        --enable-msamp \
        --msamp-opt-level O2
+elif [ "$model" == "large" -a "$amp_type" == "te-fp8" ]; then
+    echo "run large Deit with transformer engine fp8"
+    python -m torch.distributed.launch \
+       --nproc_per_node=$GPU_NUM \
+       --use_env \
+       ../third_party/deit/main.py \
+       --model deit_large_patch16_224 \
+       --batch-size 64 \
+       --data-path $DATA_PATH \
+       --output_dir output_large_te \
+       --no-model-ema \
+       --enable-te-fp8
 else
     echo $USAGE
     exit 1

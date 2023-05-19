@@ -1,8 +1,37 @@
 diff --git a/engine.py b/engine.py
-index ed10cea..a58f523 100644
+index ed10cea..e896068 100644
 --- a/engine.py
 +++ b/engine.py
-@@ -51,7 +51,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+@@ -15,6 +15,9 @@ from timm.utils import accuracy, ModelEma
+ from losses import DistillationLoss
+ import utils
+ 
++import os
++sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../'))
++from common.te_utils import TeUtils
+ 
+ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
+@@ -27,6 +30,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+     header = 'Epoch: [{}]'.format(epoch)
+     print_freq = 10
+ 
++    # amp_enable, fp8_enable, fp8_format='hybrid', max_history_len=1, amax_compute_algo='max'
++    autocast_context = TeUtils.get_autocast(True, args.enable_te_fp8)
++
+     for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
+         samples = samples.to(device, non_blocking=True)
+         targets = targets.to(device, non_blocking=True)
+@@ -37,7 +43,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+         if args.bce_loss:
+             targets = targets.gt(0.0).type(targets.dtype)
+                     
+-        with torch.cuda.amp.autocast():
++        with autocast_context():
+             outputs = model(samples)
+             loss = criterion(samples, outputs, targets)
+ 
+@@ -51,7 +57,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
  
          # this attribute is added by timm on one optimizer (adahessian)
          is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
@@ -11,8 +40,33 @@ index ed10cea..a58f523 100644
                      parameters=model.parameters(), create_graph=is_second_order)
  
          torch.cuda.synchronize()
+@@ -67,7 +73,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+ 
+ 
+ @torch.no_grad()
+-def evaluate(data_loader, model, device):
++def evaluate(data_loader, model, device, args):
+     criterion = torch.nn.CrossEntropyLoss()
+ 
+     metric_logger = utils.MetricLogger(delimiter="  ")
+@@ -75,13 +81,14 @@ def evaluate(data_loader, model, device):
+ 
+     # switch to evaluation mode
+     model.eval()
++    autocast_context = TeUtils.get_autocast(True, args.enable_te_fp8)
+ 
+     for images, target in metric_logger.log_every(data_loader, 10, header):
+         images = images.to(device, non_blocking=True)
+         target = target.to(device, non_blocking=True)
+ 
+         # compute output
+-        with torch.cuda.amp.autocast():
++        with autocast_context():
+             output = model(images)
+             loss = criterion(output, target)
+ 
 diff --git a/main.py b/main.py
-index bc8c418..d798f23 100644
+index bc8c418..588eaba 100644
 --- a/main.py
 +++ b/main.py
 @@ -15,7 +15,9 @@ from timm.models import create_model
@@ -26,7 +80,19 @@ index bc8c418..d798f23 100644
  
  from datasets import build_dataset
  from engine import train_one_epoch, evaluate
-@@ -181,6 +183,11 @@ def get_args_parser():
+@@ -28,6 +30,11 @@ import models_v2
+ 
+ import utils
+ 
++import os
++import sys
++sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../'))
++
++from common.te_utils import replace_with_telinear
+ 
+ def get_args_parser():
+     parser = argparse.ArgumentParser('DeiT training and evaluation script', add_help=False)
+@@ -181,6 +188,13 @@ def get_args_parser():
      parser.add_argument('--world_size', default=1, type=int,
                          help='number of distributed processes')
      parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
@@ -35,30 +101,42 @@ index bc8c418..d798f23 100644
 +    parser.add_argument('--enable-msamp', action='store_true', default=False, help='enable MS-AMP')
 +    parser.add_argument('--msamp-opt-level', type=str, default='O1', help='MS-AMP optimization level')
 +
++    # transformer engine
++    parser.add_argument("--enable-te-fp8", action='store_true', default=False, help='enable TE-FP8')
      return parser
  
  
-@@ -266,6 +273,8 @@ def main(args):
+@@ -266,6 +280,8 @@ def main(args):
          img_size=args.input_size
      )
  
-+    if args.enable_msamp:
++    if args.enable_msamp or args.enable_te_fp8:
 +        model.head.use_fp32_linear = True
                      
      if args.finetune:
          if args.finetune.startswith('https'):
-@@ -336,17 +345,23 @@ def main(args):
+@@ -336,17 +352,33 @@ def main(args):
              device='cpu' if args.model_ema_force_cpu else '',
              resume='')
  
 +    if not args.unscale_lr:
 +        linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
 +        args.lr = linear_scaled_lr
++
++    if args.enable_te_fp8:
++        print("te-fp8 is enabled")
++        assert not args.enable_msamp, 'msamp and te-fp8 cannot be enabled at the same time'
++        model = replace_with_telinear(model)
++
 +    optimizer = create_optimizer(args, model)
 +
 +    if args.enable_msamp:
 +        print(f'msamp is enabled, opt_level: {args.msamp_opt_level}')
 +        model, optimizer = msamp.initialize(model, optimizer, args.msamp_opt_level)
++
++    if utils.get_rank() == 0:
++        print(f'type of optimizer is {type(optimizer)}')
++        print(f'model is {model}')
 +
      model_without_ddp = model
      if args.distributed:
@@ -76,7 +154,16 @@ index bc8c418..d798f23 100644
  
      lr_scheduler, _ = create_scheduler(args, optimizer)
  
-@@ -434,7 +449,7 @@ def main(args):
+@@ -406,7 +438,7 @@ def main(args):
+                 loss_scaler.load_state_dict(checkpoint['scaler'])
+         lr_scheduler.step(args.start_epoch)
+     if args.eval:
+-        test_stats = evaluate(data_loader_val, model, device)
++        test_stats = evaluate(data_loader_val, model, device, args)
+         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+         return
+ 
+@@ -434,13 +466,13 @@ def main(args):
                      'optimizer': optimizer.state_dict(),
                      'lr_scheduler': lr_scheduler.state_dict(),
                      'epoch': epoch,
@@ -85,7 +172,14 @@ index bc8c418..d798f23 100644
                      'scaler': loss_scaler.state_dict(),
                      'args': args,
                  }, checkpoint_path)
-@@ -453,7 +468,7 @@ def main(args):
+              
+ 
+-        test_stats = evaluate(data_loader_val, model, device)
++        test_stats = evaluate(data_loader_val, model, device, args)
+         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+         
+         if max_accuracy < test_stats["acc1"]:
+@@ -453,7 +485,7 @@ def main(args):
                          'optimizer': optimizer.state_dict(),
                          'lr_scheduler': lr_scheduler.state_dict(),
                          'epoch': epoch,

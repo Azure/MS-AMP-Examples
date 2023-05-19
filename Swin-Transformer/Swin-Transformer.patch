@@ -1,18 +1,21 @@
 diff --git a/config.py b/config.py
-index 1671ec3..3bcac6d 100644
+index 1671ec3..be7c6fd 100644
 --- a/config.py
 +++ b/config.py
-@@ -260,6 +260,9 @@ _C.LOCAL_RANK = 0
+@@ -260,6 +260,12 @@ _C.LOCAL_RANK = 0
  _C.FUSED_WINDOW_PROCESS = False
  _C.FUSED_LAYERNORM = False
  
 +# ms-amp
 +_C.ENABLE_MSAMP = False
 +_C.MSAMP_OPT_LEVEL = 'O2'
++
++# te-fp8
++_C.ENABLE_TEFP8 = False
  
  def _update_config_from_file(config, cfg_file):
      config.defrost()
-@@ -333,6 +336,12 @@ def update_config(config, args):
+@@ -333,6 +339,16 @@ def update_config(config, args):
      if _check_args('optim'):
          config.TRAIN.OPTIMIZER.NAME = args.optim
  
@@ -21,6 +24,10 @@ index 1671ec3..3bcac6d 100644
 +        config.ENABLE_MSAMP = args.enable_msamp
 +    if _check_args('msamp_opt_level'):
 +        config.MSAMP_OPT_LEVEL = args.msamp_opt_level
++
++    # te-fp8
++    if _check_args('enable_tefp8'):
++        config.ENABLE_TEFP8 = args.enable_tefp8
 +
      # set local rank for distributed training
      config.LOCAL_RANK = args.local_rank
@@ -42,7 +49,7 @@ index 0000000..67b4476
 +    WINDOW_SIZE: 7
 \ No newline at end of file
 diff --git a/main.py b/main.py
-index 84230ea..08df50e 100644
+index 84230ea..faa9291 100644
 --- a/main.py
 +++ b/main.py
 @@ -19,6 +19,7 @@ import torch.distributed as dist
@@ -53,29 +60,71 @@ index 84230ea..08df50e 100644
  
  from config import get_config
  from models import build_model
-@@ -73,6 +74,9 @@ def parse_option():
+@@ -29,6 +30,10 @@ from logger import create_logger
+ from utils import load_checkpoint, load_pretrained, save_checkpoint, NativeScalerWithGradNormCount, auto_resume_helper, \
+     reduce_tensor
+ 
++import sys
++sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../'))
++
++from common.te_utils import replace_with_telinear, TeUtils
+ 
+ def parse_option():
+     parser = argparse.ArgumentParser('Swin Transformer training and evaluation script', add_help=False)
+@@ -73,6 +78,12 @@ def parse_option():
      ## overwrite optimizer in config (*.yaml) if specified, e.g., fused_adam/fused_lamb
      parser.add_argument('--optim', type=str,
                          help='overwrite optimizer if provided, can be adamw/sgd/fused_adam/fused_lamb.')
 +    # ms-amp
 +    parser.add_argument('--enable-msamp', action='store_true', default=False, help='enable MS-AMP')
 +    parser.add_argument('--msamp-opt-level', type=str, default='O1', help='MS-AMP optimization level')
++
++    # te-fp8
++    parser.add_argument('--enable-tefp8', action='store_true', default=False, help='enable TE-FP8')
  
      args, unparsed = parser.parse_known_args()
  
-@@ -98,6 +102,11 @@ def main(config):
+@@ -95,9 +106,22 @@ def main(config):
+         logger.info(f"number of GFLOPs: {flops / 1e9}")
+ 
+     model.cuda()
++
++    if config.ENABLE_TEFP8:
++        logger.info('te-fp8 is enabled')
++        model = replace_with_telinear(model)
++
      model_without_ddp = model
  
      optimizer = build_optimizer(config, model)
 +    if config.ENABLE_MSAMP:
 +        logger.info(f"msamp is enabled, opt level is {config.MSAMP_OPT_LEVEL}")
 +        model, optimizer = msamp.initialize(model, optimizer, config.MSAMP_OPT_LEVEL)
-+        logger.info(model)
++
++    if dist.get_rank() == 0:
++        logger.info(f'type of optimizer is {optimizer}')
++        logger.info(f'model is {model}')
 +
      model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
      loss_scaler = NativeScalerWithGradNormCount()
  
-@@ -191,7 +200,7 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -177,6 +201,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+ 
+     start = time.time()
+     end = time.time()
++
++    autocast_context = TeUtils.get_autocast(config.AMP_ENABLE, config.ENABLE_TEFP8)
+     for idx, (samples, targets) in enumerate(data_loader):
+         samples = samples.cuda(non_blocking=True)
+         targets = targets.cuda(non_blocking=True)
+@@ -184,14 +210,14 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+         if mixup_fn is not None:
+             samples, targets = mixup_fn(samples, targets)
+ 
+-        with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
++        with autocast_context():
+             outputs = model(samples)
+         loss = criterion(outputs, targets)
+         loss = loss / config.TRAIN.ACCUMULATION_STEPS
  
          # this attribute is added by timm on one optimizer (adahessian)
          is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
@@ -84,15 +133,30 @@ index 84230ea..08df50e 100644
                                  parameters=model.parameters(), create_graph=is_second_order,
                                  update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
          if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
+@@ -236,12 +262,13 @@ def validate(config, data_loader, model):
+     acc5_meter = AverageMeter()
+ 
+     end = time.time()
++    autocast_context = TeUtils.get_autocast(config.AMP_ENABLE, config.ENABLE_TEFP8)
+     for idx, (images, target) in enumerate(data_loader):
+         images = images.cuda(non_blocking=True)
+         target = target.cuda(non_blocking=True)
+ 
+         # compute output
+-        with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
++        with autocast_context():
+             output = model(images)
+ 
+         # measure accuracy and record loss
 diff --git a/models/build.py b/models/build.py
-index c37384d..a8ccc65 100644
+index c37384d..772e68b 100644
 --- a/models/build.py
 +++ b/models/build.py
 @@ -50,6 +50,8 @@ def build_model(config, is_pretrain=False):
                                  patch_norm=config.MODEL.SWIN.PATCH_NORM,
                                  use_checkpoint=config.TRAIN.USE_CHECKPOINT,
                                  fused_window_process=config.FUSED_WINDOW_PROCESS)
-+        if config.ENABLE_MSAMP:
++        if config.ENABLE_MSAMP or config.ENABLE_TEFP8:
 +            model.head.use_fp32_linear = True
      elif model_type == 'swinv2':
          model = SwinTransformerV2(img_size=config.DATA.IMG_SIZE,
