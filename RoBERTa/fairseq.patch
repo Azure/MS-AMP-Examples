@@ -162,3 +162,4 @@ index 8a9b2f97..1bc5650d 100644
          ],
          extras_require={
              "dev": ["flake8", "pytest", "black==22.3.0"],
+\ No newline at end of file
