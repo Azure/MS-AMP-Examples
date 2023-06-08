@@ -17,7 +17,7 @@ GPU_NUM=4
 amp_type=$1
 fairseq_train=`which fairseq-hydra-train`
 
-if [ "$amp_type" == "amp" ]; then
+if [ "$amp_type" = "amp" ]; then
     echo "run RoBERTa base with AMP"
     SAVE_PATH=$PWD/checkpoints/roberta_amp/
 
@@ -39,7 +39,7 @@ if [ "$amp_type" == "amp" ]; then
         dataset.validate_interval_updates=500 \
         distributed_training.ddp_backend=c10d
 
-elif [ "$amp_type" == "msamp" ]; then
+elif [ "$amp_type" = "msamp" ]; then
     echo "run RoBERTa base with MS-AMP"
     SAVE_PATH=$PWD/checkpoints/roberta_msamp/
     python -m torch.distributed.launch \
