@@ -7,26 +7,17 @@ cd data
 echo "start to download Wikipedia dump"
 wget https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
 
+echo "download completed, start to extract json files"
 pip install wikiextractor
 python -m wikiextractor.WikiExtractor --json enwiki-latest-pages-articles.xml.bz2
 
-echo "download completed, start to merge json files"
+echo "extract completed, start to merge json files"
 ouput_json="wiki_all.json"
-
-find text/ -type f  -print0 |
-    while IFS= read -r -d '' line; do
-            filename=$(echo "$line" | rev | cut -d'/' -f 1 | rev)
-            subfilename=$(echo "$line" | rev | cut -d'/' -f 2 | rev)
-            prefix="${subfilename}_${filename}"
-            new_name=$(echo "$line")
-            echo "Procesing $prefix, $filename, $new_name"
-            cat $new_name >> $ouput_json
-    done
-
-wget https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-vocab.json
-wget https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-merges.txt
+find text/ -name wiki* | parallel -m -j 70 "cat {} >> ${ouput_json}"
 
 echo "merge completed, start to preprocess"
+wget https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-vocab.json
+wget https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-merges.txt
 python ../../third_party/Megatron-DeepSpeed/tools/preprocess_data.py \
        --input $ouput_json \
        --output-prefix wikipedia \
@@ -36,6 +27,8 @@ python ../../third_party/Megatron-DeepSpeed/tools/preprocess_data.py \
        --merge-file gpt2-merges.txt \
        --append-eod \
        --workers 70
+
+echo "preprocess completed, start to remove temporary files"
 
 rm -rf enwiki-latest-pages-articles.xml.bz2
 rm -rf text/
