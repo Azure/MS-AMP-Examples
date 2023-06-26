@@ -9,3 +9,6 @@
 [submodule "third_party/fairseq"]
 	path = third_party/fairseq
 	url = https://github.com/facebookresearch/fairseq.git
+[submodule "Megatron-DeepSpeed"]
+	path = third_party/Megatron-DeepSpeed
+	url = https://github.com/microsoft/Megatron-DeepSpeed.git
