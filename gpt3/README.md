@@ -33,7 +33,6 @@ bash pretrain_345m.sh fp16
 Run the following command to train 345M GPT3 using MS-AMP:
 ```
 bash pretrain_345m.sh msamp
-
 ```
 ## Pretrain GPT3-13b with bf16
 Run the following command to train 13B GPT3 using bf16:
