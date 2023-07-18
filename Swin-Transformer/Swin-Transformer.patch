@@ -49,7 +49,7 @@ index 0000000..67b4476
 +    WINDOW_SIZE: 7
 \ No newline at end of file
 diff --git a/main.py b/main.py
-index 84230ea..9562e9c 100644
+index 84230ea..d459965 100644
 --- a/main.py
 +++ b/main.py
 @@ -19,6 +19,7 @@ import torch.distributed as dist
@@ -76,11 +76,11 @@ index 84230ea..9562e9c 100644
  
      # distributed training
 -    parser.add_argument("--local_rank", type=int, required=True, help='local rank for DistributedDataParallel')
-+    # parser.add_argument("--local_rank", type=int, required=True, help='local rank for DistributedDataParallel')
++    parser.add_argument("--local_rank", type=int, help='local rank for DistributedDataParallel')
  
      # for acceleration
      parser.add_argument('--fused_window_process', action='store_true',
-@@ -73,9 +78,17 @@ def parse_option():
+@@ -73,9 +78,18 @@ def parse_option():
      ## overwrite optimizer in config (*.yaml) if specified, e.g., fused_adam/fused_lamb
      parser.add_argument('--optim', type=str,
                          help='overwrite optimizer if provided, can be adamw/sgd/fused_adam/fused_lamb.')
@@ -93,12 +93,13 @@ index 84230ea..9562e9c 100644
  
      args, unparsed = parser.parse_known_args()
  
-+    args.local_rank = int(os.environ["LOCAL_RANK"])
++    if args.local_rank is None and 'LOCAL_RANK' in os.environ:
++        args.local_rank = int(os.environ['LOCAL_RANK'])
 +
      config = get_config(args)
  
      return args, config
-@@ -95,9 +108,22 @@ def main(config):
+@@ -95,9 +109,22 @@ def main(config):
          logger.info(f"number of GFLOPs: {flops / 1e9}")
  
      model.cuda()
@@ -121,7 +122,7 @@ index 84230ea..9562e9c 100644
      model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
      loss_scaler = NativeScalerWithGradNormCount()
  
-@@ -177,6 +203,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -177,6 +204,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
  
      start = time.time()
      end = time.time()
@@ -130,7 +131,7 @@ index 84230ea..9562e9c 100644
      for idx, (samples, targets) in enumerate(data_loader):
          samples = samples.cuda(non_blocking=True)
          targets = targets.cuda(non_blocking=True)
-@@ -184,14 +212,14 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -184,14 +213,14 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
          if mixup_fn is not None:
              samples, targets = mixup_fn(samples, targets)
  
@@ -147,7 +148,7 @@ index 84230ea..9562e9c 100644
                                  parameters=model.parameters(), create_graph=is_second_order,
                                  update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
          if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
-@@ -236,12 +264,13 @@ def validate(config, data_loader, model):
+@@ -236,12 +265,13 @@ def validate(config, data_loader, model):
      acc5_meter = AverageMeter()
  
      end = time.time()
