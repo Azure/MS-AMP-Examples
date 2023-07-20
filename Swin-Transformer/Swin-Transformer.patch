@@ -49,7 +49,7 @@ index 0000000..67b4476
 +    WINDOW_SIZE: 7
 \ No newline at end of file
 diff --git a/main.py b/main.py
-index 84230ea..faa9291 100644
+index 84230ea..d459965 100644
 --- a/main.py
 +++ b/main.py
 @@ -19,6 +19,7 @@ import torch.distributed as dist
@@ -71,7 +71,16 @@ index 84230ea..faa9291 100644
  
  def parse_option():
      parser = argparse.ArgumentParser('Swin Transformer training and evaluation script', add_help=False)
-@@ -73,6 +78,12 @@ def parse_option():
+@@ -64,7 +69,7 @@ def parse_option():
+     parser.add_argument('--throughput', action='store_true', help='Test throughput only')
+ 
+     # distributed training
+-    parser.add_argument("--local_rank", type=int, required=True, help='local rank for DistributedDataParallel')
++    parser.add_argument("--local_rank", type=int, help='local rank for DistributedDataParallel')
+ 
+     # for acceleration
+     parser.add_argument('--fused_window_process', action='store_true',
+@@ -73,9 +78,18 @@ def parse_option():
      ## overwrite optimizer in config (*.yaml) if specified, e.g., fused_adam/fused_lamb
      parser.add_argument('--optim', type=str,
                          help='overwrite optimizer if provided, can be adamw/sgd/fused_adam/fused_lamb.')
@@ -84,7 +93,13 @@ index 84230ea..faa9291 100644
  
      args, unparsed = parser.parse_known_args()
  
-@@ -95,9 +106,22 @@ def main(config):
++    if args.local_rank is None and 'LOCAL_RANK' in os.environ:
++        args.local_rank = int(os.environ['LOCAL_RANK'])
++
+     config = get_config(args)
+ 
+     return args, config
+@@ -95,9 +109,22 @@ def main(config):
          logger.info(f"number of GFLOPs: {flops / 1e9}")
  
      model.cuda()
@@ -107,7 +122,7 @@ index 84230ea..faa9291 100644
      model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
      loss_scaler = NativeScalerWithGradNormCount()
  
-@@ -177,6 +201,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -177,6 +204,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
  
      start = time.time()
      end = time.time()
@@ -116,7 +131,7 @@ index 84230ea..faa9291 100644
      for idx, (samples, targets) in enumerate(data_loader):
          samples = samples.cuda(non_blocking=True)
          targets = targets.cuda(non_blocking=True)
-@@ -184,14 +210,14 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -184,14 +213,14 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
          if mixup_fn is not None:
              samples, targets = mixup_fn(samples, targets)
  
@@ -133,7 +148,7 @@ index 84230ea..faa9291 100644
                                  parameters=model.parameters(), create_graph=is_second_order,
                                  update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
          if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
-@@ -236,12 +262,13 @@ def validate(config, data_loader, model):
+@@ -236,12 +265,13 @@ def validate(config, data_loader, model):
      acc5_meter = AverageMeter()
  
      end = time.time()
@@ -162,14 +177,16 @@ index c37384d..772e68b 100644
          model = SwinTransformerV2(img_size=config.DATA.IMG_SIZE,
                                    patch_size=config.MODEL.SWINV2.PATCH_SIZE,
 diff --git a/utils.py b/utils.py
-index eb607cf..8711a44 100644
+index eb607cf..7be4dd6 100644
 --- a/utils.py
 +++ b/utils.py
-@@ -9,7 +9,7 @@ import os
+@@ -8,8 +8,8 @@
+ import os
  import torch
  import torch.distributed as dist
- from torch._six import inf
+-from torch._six import inf
 -
++from torch import inf
 +from msamp import clip_grad_norm_
  
  def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger):
