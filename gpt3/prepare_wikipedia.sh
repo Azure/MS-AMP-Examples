@@ -9,11 +9,14 @@ set -e
 mkdir -p data
 cd data
 
+# Install dependencies
+pip install nltk
+pip install wikiextractor
+
 echo "start to download Wikipedia dump"
 wget https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
 
 echo "download completed, start to extract json files"
-pip install wikiextractor
 python -m wikiextractor.WikiExtractor --json enwiki-latest-pages-articles.xml.bz2
 
 echo "extract completed, start to merge json files"
