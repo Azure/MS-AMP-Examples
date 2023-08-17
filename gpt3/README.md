@@ -3,8 +3,8 @@
 ## Apply patch to Megatron-DeepSpeed
 We made a few changes to the official Megatron-DeepSpeed and packaged it into a patch. You need to apply this patch to third_party/Megatron-DeepSpeed.
 ```
-cd ../third_party/Megatron-DeepSpeed
-git apply ../../gpt3/Megatron-DeepSpeed.patch
+cd ../third_party/Megatron-LM
+git apply ../../gpt3/Megatron-LM.patch
 cd ../../gpt3
 ```
 
