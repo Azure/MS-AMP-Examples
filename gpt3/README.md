@@ -2,10 +2,16 @@
 
 ## Apply patch to Megatron-DeepSpeed
 We made a few changes to the official Megatron-DeepSpeed and packaged it into a patch. You need to apply this patch to third_party/Megatron-DeepSpeed.
-```
+```bash
 cd ../third_party/Megatron-LM
 git apply ../../gpt3/Megatron-LM.patch
 cd ../../gpt3
+```
+
+## Install dependencies
+You need to install depedencies before training GPT3. It is recommended to use venv for virtual environments, but it is not strictly necessary.
+```bash
+pip install einops
 ```
 
 ## Data preparation

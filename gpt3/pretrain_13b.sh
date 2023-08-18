@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 
 # Runs the "13B" parameter model
 # GPT-13B: 40 layers, 5120 hidden size, 40 attention heads
@@ -13,28 +13,31 @@ if [ "$#" -ne 1 ]; then
 fi
 
 FP_TYPE=$1
-NODE_RANK=0
-NNODES=1
-GPUS_PER_NODE=8
-MASTER_ADDR=127.0.0.1
-MASTER_PORT=6001
 
-DATA_PATH=$PWD/data/wikipedia_text_document
-DATA_PATH=$PWD/data/wikipedia_text_document
-DATASET="1.0 ${DATA_PATH}"
-BS=4 
-PP=1
-TP=2
-CLIP_GRAD=1.0
-GLOBAL_BATCH_SIZE=1280
-LOG_INTERVAL=1
-ZERO_STAGE=1
+export CUDA_DEVICE_MAX_CONNECTIONS=1
+GPUS_PER_NODE=8
+# Change for multinode config
+MASTER_ADDR=localhost
+MASTER_PORT=6000
+NNODES=1
+NODE_RANK=0
+WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
+
 VOCAB_FILE=$PWD/data/gpt2-vocab.json
 MERGE_FILE=$PWD/data/gpt2-merges.txt
+DATA_PATH=$PWD/data/wikipedia_text_document
+
+DISTRIBUTED_ARGS="
+    --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $NNODES \
+    --node_rank $NODE_RANK \
+    --master_addr $MASTER_ADDR \
+    --master_port $MASTER_PORT
+"
 
 GPT_ARGS="
-    --tensor-model-parallel-size $TP \
-    --pipeline-model-parallel-size $PP \
+    --tensor-model-parallel-size 2 \
+    --pipeline-model-parallel-size 1 \
     --distributed-backend nccl \
     --no-query-key-layer-scaling \
     --seed 43 \
@@ -49,9 +52,9 @@ GPT_ARGS="
     --lr 2.0e-4 \
     --min-lr 2.0e-5 \
     --lr-decay-style cosine \
-    --micro-batch-size $BS \
-    --global-batch-size $GLOBAL_BATCH_SIZE \
-    --clip-grad $CLIP_GRAD \
+    --micro-batch-size 4 \
+    --global-batch-size 1280 \
+    --clip-grad 1.0 \
     --weight-decay 0.1 \
     --attention-dropout 0.0 \
     --hidden-dropout 0.0 \
@@ -61,11 +64,14 @@ GPT_ARGS="
     --init-method-std 0.0099 \
     --num-workers 1 \
     --bf16 \
-    --checkpoint-activations \
+    --sequence-parallel \
+    --use-flash-attn \
+    --no-gradient-accumulation-fusion \
+    --use-distributed-optimizer
 "
 
 DATA_ARGS="
-    --data-path $DATASET \
+    --data-path $DATA_PATH \
     --vocab-file $VOCAB_FILE \
     --merge-file $MERGE_FILE \
     --data-impl mmap \
@@ -73,71 +79,27 @@ DATA_ARGS="
 "
 
 OUTPUT_ARGS="
-    --log-interval $LOG_INTERVAL \
-    --eval-iters 7 \
-    --eval-interval 200 \
+    --log-interval 1 \
     --save-interval 2000 \
+    --eval-interval 200 \
+    --eval-iters 7
 "
-
-DISTRIBUTED_ARGS="
-    --nproc_per_node $GPUS_PER_NODE \
-    --nnodes $NNODES \
-    --node_rank $NODE_RANK \
-    --master_addr $MASTER_ADDR \
-    --master_port $MASTER_PORT \
-"
-
-config_json="./ds_config.json"
-
-cat <<EOT >$config_json
-{
-  "train_micro_batch_size_per_gpu": $BS,
-  "train_batch_size": $GLOBAL_BATCH_SIZE,
-  "gradient_clipping": $CLIP_GRAD,
-  "zero_optimization": {
-    "stage": $ZERO_STAGE
-  },
-  "bf16": {
-    "enabled": true
-  },
-  "steps_per_print": $LOG_INTERVAL
-}
-EOT
-
-DEEPSPEED_ARGS=" \
-    --deepspeed \
-    --deepspeed_config ${config_json} \
-    --zero-stage ${ZERO_STAGE} \
-    --deepspeed-activation-checkpointing \
-"
-
-export CUDA_DEVICE_MAX_CONNECTIONS=1
 
 if [ "$FP_TYPE" = "bf16" ]; then
-  echo "run 13b GPT3 with bf16"
-  CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_bf16
-  python -m torch.distributed.launch $DISTRIBUTED_ARGS \
-    ../third_party/Megatron-DeepSpeed/pretrain_gpt.py \
-    $GPT_ARGS \
-    $DATA_ARGS \
-    $OUTPUT_ARGS \
-    --save $CHECKPOINT_PATH \
-    --load $CHECKPOINT_PATH \
-    $DEEPSPEED_ARGS
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --distributed-backend nccl
+
 elif [ "$FP_TYPE" = "msamp" ]; then
-  echo "run 13b GPT3 with msamp"
-  CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_msamp
-  python -m torch.distributed.launch $DISTRIBUTED_ARGS \
-    ../third_party/Megatron-DeepSpeed/pretrain_gpt.py \
-    $GPT_ARGS \
-    $DATA_ARGS \
-    $OUTPUT_ARGS \
-    --save $CHECKPOINT_PATH \
-    --load $CHECKPOINT_PATH \
-    --msamp \
-    --msamp-opt-level O3 \
-    $DEEPSPEED_ARGS
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --distributed-backend nccl \
+        --msamp
 else
-  echo $USAGE
-  exit 1
+    echo $USAGE
+    exit 1
 fi
