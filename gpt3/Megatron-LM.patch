@@ -194,7 +194,7 @@ index 484e9b3..e85984d 100644
          optimizer = SGD(param_groups,
                          lr=args.lr,
 diff --git a/megatron/optimizer/optimizer.py b/megatron/optimizer/optimizer.py
-index da9cd70..7fb0dfb 100644
+index da9cd70..414fd88 100644
 --- a/megatron/optimizer/optimizer.py
 +++ b/megatron/optimizer/optimizer.py
 @@ -13,13 +13,15 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
@@ -210,20 +210,11 @@ index da9cd70..7fb0dfb 100644
 -from .clip_grads import clip_grad_norm_fp32, count_zeros_fp32
 +from .clip_grads import count_zeros_fp32
  
-+from msamp.megatron import clip_grad_norm_fp8
++from msamp.megatron import clip_grad_norm_fp32
 +from msamp.megatron import FP8DistributedDataParallel as LocalDDP
  
  def _zero_grad_group_helper(group, set_to_none):
      """Zero out the gradient for a group of parameters.
-@@ -116,7 +118,7 @@ class MegatronOptimizer(ABC):
-     def clip_grad_norm(self, clip_grad):
-         params = self.get_parameters()
-         grads_for_norm = self.get_main_grads_for_grad_norm()
--        return clip_grad_norm_fp32(
-+        return clip_grad_norm_fp8(
-             params, grads_for_norm, clip_grad,
-             model_parallel_group=self.get_model_parallel_group())
- 
 diff --git a/megatron/training.py b/megatron/training.py
 index b821ae7..0133a19 100644
 --- a/megatron/training.py

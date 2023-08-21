@@ -1,6 +1,6 @@
 # This is an example of GPT3 using MS-AMP
 
-## Apply patch to Megatron-DeepSpeed
+## Apply patch to Megatron-LM
 We made a few changes to the official Megatron-LM and packaged it into a patch. You need to apply this patch to third_party/Megatron-LM.
 ```bash
 cd ../third_party/Megatron-LM
