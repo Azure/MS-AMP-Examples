@@ -9,10 +9,6 @@ set -e
 mkdir -p data
 cd data
 
-# Install dependencies
-pip install nltk
-pip install wikiextractor
-
 echo "start to download Wikipedia dump"
 wget https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
 
