@@ -21,7 +21,7 @@ This folder contains end-to-end training of [DeiT](https://github.com/facebookre
 This folder contains end-to-end training of [RoBERTa](https://github.com/facebookresearch/fairseq/blob/main/examples/roberta/README.md) model using MS-AMP.
 
 ## GPT-3
-This folder contains end-to-end training of [GPT-3](https://github.com/microsoft/Megatron-DeepSpeed#gpt-pretraining) model using MS-AMP.
+This folder contains end-to-end training of [GPT-3](https://github.com/NVIDIA/Megatron-LM#gpt-pretraining) model using MS-AMP.
 
 ## Contributing
 

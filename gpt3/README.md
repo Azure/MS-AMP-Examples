@@ -1,11 +1,10 @@
 # This is an example of GPT3 using MS-AMP
+We support both of Megatron-DeepSpeed and Megatron-LM. You can choose either of them to run GPT-3.
 
-## Apply patch to Megatron-DeepSpeed
-We made a few changes to the official Megatron-DeepSpeed and packaged it into a patch. You need to apply this patch to third_party/Megatron-DeepSpeed.
-```
-cd ../third_party/Megatron-DeepSpeed
-git apply ../../gpt3/Megatron-DeepSpeed.patch
-cd ../../gpt3
+## Install dependencies
+You need to install depedencies before training GPT3. It is recommended to use venv for virtual environments, but it is not strictly necessary.
+```bash
+pip install einops nltk wikiextractor
 ```
 
 ## Data preparation
@@ -23,25 +22,69 @@ data
 ├── wikipedia_text_document.bin
 └── wikipedia_text_document.idx
 ```
+
+## Using Megatron-LM
+
+### Apply patch to Megatron-LM
+We made a few changes to the official Megatron-LM and packaged it into a patch. You need to apply this patch to third_party/Megatron-LM.
+```bash
+cd ../third_party/Megatron-LM
+git apply ../../gpt3/Megatron-LM.patch
+cd ../../gpt3
+```
+
 ## Pretrain GPT3-345m with fp16
 Run the following command to train 345M GPT3 using fp16:
 ```bash
-bash pretrain_345m.sh fp16
+bash pretrain_345m_megatron.sh fp16
 ```
 
 ## Pretrain GPT3-345m with MS-AMP
 Run the following command to train 345M GPT3 using MS-AMP:
-```
-bash pretrain_345m.sh msamp
+```bash
+bash pretrain_345m_megatron.sh msamp
 ```
 ## Pretrain GPT3-13b with bf16
 Run the following command to train 13B GPT3 using bf16:
 ```bash
-bash pretrain_13b.sh bf16
+bash pretrain_13b_megatron.sh bf16
 ```
 
 ## Pretrain GPT3-13b with MS-AMP
 Run the following command to train 13B GPT3 using MS-AMP:
 ```bash
-bash pretrain_13b.sh msamp
+bash pretrain_13b_megatron.sh msamp
+```
+
+## Using Megatron-DeepSpeed
+
+### Apply patch to Megatron-DeepSpeed
+We made a few changes to the official Megatron-DeepSpeed and packaged it into a patch. You need to apply this patch to third_party/Megatron-LM.
+```bash
+cd ../third_party/Megatron-DeepSpeed
+git apply ../../gpt3/Megatron-DeepSpeed.patch
+cd ../../gpt3
+```
+
+## Pretrain GPT3-345m with fp16
+Run the following command to train 345M GPT3 using fp16:
+```bash
+bash pretrain_345m_megatron_ds.sh fp16
+```
+
+## Pretrain GPT3-345m with MS-AMP
+Run the following command to train 345M GPT3 using MS-AMP:
+```bash
+bash pretrain_345m_megatron_ds.sh msamp
+```
+## Pretrain GPT3-13b with bf16
+Run the following command to train 13B GPT3 using bf16:
+```bash
+bash pretrain_13b_megatron_ds.sh bf16
+```
+
+## Pretrain GPT3-13b with MS-AMP
+Run the following command to train 13B GPT3 using MS-AMP:
+```bash
+bash pretrain_13b_megatron_ds.sh msamp
 ```

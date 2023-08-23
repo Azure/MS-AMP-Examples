@@ -1,0 +1,257 @@
+diff --git a/megatron/arguments.py b/megatron/arguments.py
+index ae42b83..f427bc5 100644
+--- a/megatron/arguments.py
++++ b/megatron/arguments.py
+@@ -38,6 +38,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
+     parser = _add_inference_args(parser)
+     parser = _add_transformer_engine_args(parser)
+     parser = _add_retro_args(parser)
++    parser = _add_msamp_args(parser)
+ 
+     # Custom arguments.
+     if extra_args_provider is not None:
+@@ -1306,3 +1307,10 @@ def _add_vision_args(parser):
+                        help='warmup teacher temperaure epochs')
+ 
+     return parser
++
++
++def _add_msamp_args(parser):
++    group = parser.add_argument_group(title="msamp")
++    group.add_argument('--msamp', action='store_true', default=False,
++                       help='whether to enable msamp')
++    return parser
+\ No newline at end of file
+diff --git a/megatron/core/tensor_parallel/layers.py b/megatron/core/tensor_parallel/layers.py
+index a86444c..600f49d 100644
+--- a/megatron/core/tensor_parallel/layers.py
++++ b/megatron/core/tensor_parallel/layers.py
+@@ -439,7 +439,9 @@ def linear_with_grad_accumulation_and_async_allreduce(
+                     "maximum speedup"
+                 )
+                 linear_with_grad_accumulation_and_async_allreduce.warned = True
+-
++    if hasattr(weight, '_scaling_metas'):
++        from msamp.megatron import FP8LinearWithGradAccumulationAndAsyncCommunication
++        return FP8LinearWithGradAccumulationAndAsyncCommunication.apply(*args)
+     return LinearWithGradAccumulationAndAsyncCommunication.apply(*args)
+ 
+ 
+@@ -513,14 +515,14 @@ class ColumnParallelLinear(torch.nn.Module):
+         # Initialize weight.
+         if not skip_weight_param_allocation:
+             if config.use_cpu_initialization:
+-                self.weight = Parameter(
++                _weight = Parameter(
+                     torch.empty(
+                         self.output_size_per_partition, self.input_size, dtype=config.params_dtype
+                     )
+                 )
+                 if config.perform_initialization:
+                     self.master_weight = _initialize_affine_weight_cpu(
+-                        self.weight,
++                        _weight,
+                         self.output_size,
+                         self.input_size,
+                         self.output_size_per_partition,
+@@ -530,7 +532,7 @@ class ColumnParallelLinear(torch.nn.Module):
+                         return_master_weight=keep_master_weight_for_test,
+                     )
+             else:
+-                self.weight = Parameter(
++                _weight = Parameter(
+                     torch.empty(
+                         self.output_size_per_partition,
+                         self.input_size,
+@@ -540,10 +542,10 @@ class ColumnParallelLinear(torch.nn.Module):
+                 )
+                 if config.perform_initialization:
+                     _initialize_affine_weight_gpu(
+-                        self.weight, init_method, partition_dim=0, stride=stride
++                        _weight, init_method, partition_dim=0, stride=stride
+                     )
+         else:
+-            self.weight = None
++            _weight = None
+ 
+         if bias:
+             if config.use_cpu_initialization:
+@@ -597,6 +599,17 @@ class ColumnParallelLinear(torch.nn.Module):
+             )
+ 
+         self._forward_impl = linear_with_grad_accumulation_and_async_allreduce
++        self.linear = torch.nn.Linear(self.input_size, self.output_size_per_partition, bias=False, dtype=config.params_dtype)
++        assert self.linear.weight.shape == _weight.shape
++        self.linear.weight = _weight
++
++    @property
++    def weight(self):
++        return self.linear.weight
++
++    @weight.setter
++    def weight(self, value):
++        raise RuntimeError('Do not set weight.')
+ 
+     def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None):
+         """Forward of ColumnParallelLinear
+@@ -722,14 +735,14 @@ class RowParallelLinear(torch.nn.Module):
+         # we allocate the transpose.
+         # Initialize weight.
+         if config.use_cpu_initialization:
+-            self.weight = Parameter(
++            _weight = Parameter(
+                 torch.empty(
+                     self.output_size, self.input_size_per_partition, dtype=config.params_dtype
+                 )
+             )
+             if config.perform_initialization:
+                 self.master_weight = _initialize_affine_weight_cpu(
+-                    self.weight,
++                    _weight,
+                     self.output_size,
+                     self.input_size,
+                     self.input_size_per_partition,
+@@ -740,7 +753,7 @@ class RowParallelLinear(torch.nn.Module):
+                     params_dtype=config.params_dtype,
+                 )
+         else:
+-            self.weight = Parameter(
++            _weight = Parameter(
+                 torch.empty(
+                     self.output_size,
+                     self.input_size_per_partition,
+@@ -750,7 +763,7 @@ class RowParallelLinear(torch.nn.Module):
+             )
+             if config.perform_initialization:
+                 _initialize_affine_weight_gpu(
+-                    self.weight, init_method, partition_dim=1, stride=stride
++                    _weight, init_method, partition_dim=1, stride=stride
+                 )
+         if bias:
+             if config.use_cpu_initialization:
+@@ -774,6 +787,18 @@ class RowParallelLinear(torch.nn.Module):
+ 
+         self._forward_impl = linear_with_grad_accumulation_and_async_allreduce
+ 
++        self.linear = torch.nn.Linear(self.input_size_per_partition, self.output_size, bias=False, dtype=config.params_dtype)
++        assert self.linear.weight.shape == _weight.shape
++        self.linear.weight = _weight
++
++    @property
++    def weight(self):
++        return self.linear.weight
++
++    @weight.setter
++    def weight(self, value):
++        raise RuntimeError('Do not set weight.')
++
+     def forward(self, input_):
+         """Forward of RowParallelLinear
+ 
+diff --git a/megatron/optimizer/__init__.py b/megatron/optimizer/__init__.py
+index 484e9b3..e85984d 100644
+--- a/megatron/optimizer/__init__.py
++++ b/megatron/optimizer/__init__.py
+@@ -5,10 +5,12 @@ from apex.optimizers import FusedSGD as SGD
+ 
+ from megatron import get_args
+ 
+-from .distrib_optimizer import DistributedOptimizer
+ from .grad_scaler import ConstantGradScaler, DynamicGradScaler
+ from .optimizer import Float16OptimizerWithFloat16Params, FP32Optimizer
+ 
++import torch
++from msamp.optim import LBAdamW
++from msamp.megatron import FP8DistributedOptimizer as DistributedOptimizer
+ 
+ def get_param_groups(modules,
+                      no_weight_decay_cond,
+@@ -73,11 +75,21 @@ def get_megatron_optimizer(model,
+                                     lr_mult)
+ 
+     if args.optimizer == 'adam':
+-        optimizer = Adam(param_groups,
+-                         lr=args.lr,
+-                         weight_decay=args.weight_decay,
+-                         betas=(args.adam_beta1, args.adam_beta2),
+-                         eps=args.adam_eps)
++        if args.msamp:
++            exp_avg_dtype, exp_avg_sq_dtype = torch.uint8, torch.float16
++            optimizer = LBAdamW(param_groups,
++                            lr=args.lr,
++                            weight_decay=args.weight_decay,
++                            betas=(args.adam_beta1, args.adam_beta2),
++                            eps=args.adam_eps,
++                            exp_avg_dtype=exp_avg_dtype, exp_avg_sq_dtype=exp_avg_sq_dtype,
++                            tensor_scale=True)
++        else:
++            optimizer = Adam(param_groups,
++                            lr=args.lr,
++                            weight_decay=args.weight_decay,
++                            betas=(args.adam_beta1, args.adam_beta2),
++                            eps=args.adam_eps)
+     elif args.optimizer == 'sgd':
+         optimizer = SGD(param_groups,
+                         lr=args.lr,
+diff --git a/megatron/optimizer/optimizer.py b/megatron/optimizer/optimizer.py
+index da9cd70..414fd88 100644
+--- a/megatron/optimizer/optimizer.py
++++ b/megatron/optimizer/optimizer.py
+@@ -13,13 +13,15 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+ from megatron import get_timers
+ from megatron import print_rank_0
+ from megatron.core import mpu, tensor_parallel
+-from megatron.model import DistributedDataParallel as LocalDDP
++# from megatron.model import DistributedDataParallel as LocalDDP
+ from megatron.model import Float16Module
+ from megatron.model.module import param_is_not_shared
+ from megatron.utils import unwrap_model
+ 
+-from .clip_grads import clip_grad_norm_fp32, count_zeros_fp32
++from .clip_grads import count_zeros_fp32
+ 
++from msamp.megatron import clip_grad_norm_fp32
++from msamp.megatron import FP8DistributedDataParallel as LocalDDP
+ 
+ def _zero_grad_group_helper(group, set_to_none):
+     """Zero out the gradient for a group of parameters.
+diff --git a/megatron/training.py b/megatron/training.py
+index b821ae7..0133a19 100644
+--- a/megatron/training.py
++++ b/megatron/training.py
+@@ -33,7 +33,7 @@ from megatron.initialize import initialize_megatron
+ from megatron.initialize import write_args_to_tensorboard
+ from megatron.initialize import set_jit_fusion_options
+ from megatron.optimizer_param_scheduler import OptimizerParamScheduler
+-from megatron.model import DistributedDataParallel as LocalDDP
++# from megatron.model import DistributedDataParallel as LocalDDP
+ from megatron.utils import check_adlr_autoresume_termination
+ from megatron.utils import unwrap_model
+ from megatron.data.data_samplers import build_pretraining_data_loader
+@@ -42,6 +42,10 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
+ from megatron.utils import report_memory
+ from megatron.model.vision.knn_monitor import compute_feature_bank
+ 
++from msamp.nn import LinearReplacer
++from msamp.common.dtype import Dtypes
++from msamp.nn.state import model_state
++from msamp.megatron import FP8DistributedDataParallel as LocalDDP
+ 
+ def print_datetime(string):
+     """Note that this call will sync across all ranks."""
+@@ -296,6 +300,15 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
+     if args.fp16 or args.bf16:
+         model = [Float16Module(model_module, args) for model_module in model]
+ 
++    if args.msamp:
++        print_rank_0("msamp is enabled")
++        model_state.use_fp8_ddp = True
++        for i in range(len(model)):
++            model[i] = LinearReplacer.replace(model[i], Dtypes.kfloat16,
++                                              src_rank=mpu.get_data_parallel_src_rank(),
++                                              group=mpu.get_data_parallel_group())
++            print_rank_0(model[i])
++
+     if wrap_with_ddp:
+         if args.DDP_impl == 'torch':
+             i = torch.cuda.current_device()
