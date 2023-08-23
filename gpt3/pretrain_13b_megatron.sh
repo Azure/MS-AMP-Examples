@@ -89,15 +89,13 @@ if [ "$FP_TYPE" = "bf16" ]; then
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
-        $OUTPUT_ARGS \
-        --distributed-backend nccl
+        $OUTPUT_ARGS
 
 elif [ "$FP_TYPE" = "msamp" ]; then
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
-        --distributed-backend nccl \
         --msamp
 else
     echo $USAGE

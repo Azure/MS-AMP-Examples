@@ -4,9 +4,7 @@ We support both of Megatron-DeepSpeed and Megatron-LM. You can choose either of 
 ## Install dependencies
 You need to install depedencies before training GPT3. It is recommended to use venv for virtual environments, but it is not strictly necessary.
 ```bash
-pip install einops
-pip install nltk
-pip install wikiextractor
+pip install einops nltk wikiextractor
 ```
 
 ## Data preparation
