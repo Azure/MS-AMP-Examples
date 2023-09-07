@@ -216,7 +216,7 @@ index da9cd70..414fd88 100644
  def _zero_grad_group_helper(group, set_to_none):
      """Zero out the gradient for a group of parameters.
 diff --git a/megatron/training.py b/megatron/training.py
-index b821ae7..0133a19 100644
+index b821ae7..f844993 100644
 --- a/megatron/training.py
 +++ b/megatron/training.py
 @@ -33,7 +33,7 @@ from megatron.initialize import initialize_megatron
@@ -239,7 +239,17 @@ index b821ae7..0133a19 100644
  
  def print_datetime(string):
      """Note that this call will sync across all ranks."""
-@@ -296,6 +300,15 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
+@@ -216,6 +220,9 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
+     args = get_args()
+     args.model_type = model_type
+ 
++    if args.msamp and args.transformer_impl == 'transformer_engine':
++        import msamp.te
++
+     # Build model.
+     if mpu.get_pipeline_model_parallel_world_size() > 1 and \
+        args.virtual_pipeline_model_parallel_size is not None:
+@@ -296,6 +303,20 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
      if args.fp16 or args.bf16:
          model = [Float16Module(model_module, args) for model_module in model]
  
@@ -247,9 +257,14 @@ index b821ae7..0133a19 100644
 +        print_rank_0("msamp is enabled")
 +        model_state.use_fp8_ddp = True
 +        for i in range(len(model)):
-+            model[i] = LinearReplacer.replace(model[i], Dtypes.kfloat16,
-+                                              src_rank=mpu.get_data_parallel_src_rank(),
-+                                              group=mpu.get_data_parallel_group())
++            if args.transformer_impl == 'transformer_engine':
++                from msamp.te import TeReplacer
++                model[i] = TeReplacer.replace(model[i])
++            else:
++                model[i] = LinearReplacer.replace(model[i], Dtypes.kfloat16,
++                                                  src_rank=mpu.get_data_parallel_src_rank(),
++                                                  group=mpu.get_data_parallel_group())
++
 +            print_rank_0(model[i])
 +
      if wrap_with_ddp:
