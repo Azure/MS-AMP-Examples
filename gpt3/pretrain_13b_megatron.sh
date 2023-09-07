@@ -5,7 +5,7 @@
 
 set -e
 
-USAGE="usage: bash pretrain_13b.sh [bf16|msamp]"
+USAGE="usage: bash pretrain_13b_megatron.sh [bf16|te|msamp]"
 
 if [ "$#" -ne 1 ]; then
   echo $USAGE
@@ -90,12 +90,20 @@ if [ "$FP_TYPE" = "bf16" ]; then
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS
-
+elif [ "$FP_TYPE" = "te" ]; then
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine
 elif [ "$FP_TYPE" = "msamp" ]; then
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine \
         --msamp
 else
     echo $USAGE
