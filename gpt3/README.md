@@ -50,6 +50,11 @@ Run the following command to train 13B GPT3 using bf16:
 bash pretrain_13b_megatron.sh bf16
 ```
 
+## Pretrain GPT3-13b with Transformer-Engine
+```bash
+bash pretrain_13b_megatron te
+```
+
 ## Pretrain GPT3-13b with MS-AMP
 Run the following command to train 13B GPT3 using MS-AMP:
 ```bash

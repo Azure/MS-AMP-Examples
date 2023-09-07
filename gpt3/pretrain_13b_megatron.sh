@@ -52,7 +52,7 @@ GPT_ARGS="
     --lr 2.0e-4 \
     --min-lr 2.0e-5 \
     --lr-decay-style cosine \
-    --micro-batch-size 2 \
+    --micro-batch-size 1 \
     --global-batch-size 1280 \
     --clip-grad 1.0 \
     --weight-decay 0.1 \
