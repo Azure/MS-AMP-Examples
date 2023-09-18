@@ -80,7 +80,7 @@ DATA_ARGS="
 
 OUTPUT_ARGS="
     --log-interval 1 \
-    --save-interval 2 \
+    --save-interval 2000 \
     --eval-interval 200 \
     --eval-iters 7
 "
