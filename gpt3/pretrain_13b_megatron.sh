@@ -80,31 +80,40 @@ DATA_ARGS="
 
 OUTPUT_ARGS="
     --log-interval 1 \
-    --save-interval 2000 \
+    --save-interval 2 \
     --eval-interval 200 \
     --eval-iters 7
 "
 
 if [ "$FP_TYPE" = "bf16" ]; then
-    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
-        $GPT_ARGS \
-        $DATA_ARGS \
-        $OUTPUT_ARGS
-elif [ "$FP_TYPE" = "te" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_bf16
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
-        --fp8-hybrid \
-        --transformer-impl transformer_engine
-elif [ "$FP_TYPE" = "msamp" ]; then
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
+elif [ "$FP_TYPE" = "te" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_te
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
         --fp8-hybrid \
         --transformer-impl transformer_engine \
-        --msamp
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
+elif [ "$FP_TYPE" = "msamp" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_msamp
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine \
+        --msamp \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
 else
     echo $USAGE
     exit 1

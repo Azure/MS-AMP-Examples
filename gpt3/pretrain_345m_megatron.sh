@@ -66,23 +66,29 @@ DATA_ARGS="
 
 OUTPUT_ARGS="
     --log-interval 100 \
-    --save-interval 10000 \
+    --save-interval 300 \
     --eval-interval 1000 \
     --eval-iters 10
 "
 
 if [ "$FP_TYPE" = "fp16" ]; then
-    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
-        $GPT_ARGS \
-        $DATA_ARGS \
-        $OUTPUT_ARGS
-
-elif [ "$FP_TYPE" = "msamp" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_345m_fp16
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
-        --msamp
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
+
+elif [ "$FP_TYPE" = "msamp" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_345m_msamp
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --msamp \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
 else
     echo $USAGE
     exit 1
