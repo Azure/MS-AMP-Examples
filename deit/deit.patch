@@ -1,5 +1,5 @@
 diff --git a/engine.py b/engine.py
-index ed10cea..76665ef 100644
+index ed10cea..9fb4dd5 100644
 --- a/engine.py
 +++ b/engine.py
 @@ -15,6 +15,9 @@ from timm.utils import accuracy, ModelEma
@@ -24,7 +24,7 @@ index ed10cea..76665ef 100644
  
 +    # amp_enable, fp8_enable, fp8_format='hybrid', max_history_len=1, amax_compute_algo='max'
 +    autocast_context = TeUtils.get_autocast(True, args.enable_te_fp8)
-+    
++
      for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
          samples = samples.to(device, non_blocking=True)
          targets = targets.to(device, non_blocking=True)
