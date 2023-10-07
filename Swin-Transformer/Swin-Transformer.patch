@@ -49,7 +49,7 @@ index 0000000..67b4476
 +    WINDOW_SIZE: 7
 \ No newline at end of file
 diff --git a/main.py b/main.py
-index 84230ea..d459965 100644
+index 84230ea..72cb858 100644
 --- a/main.py
 +++ b/main.py
 @@ -19,6 +19,7 @@ import torch.distributed as dist
@@ -99,7 +99,18 @@ index 84230ea..d459965 100644
      config = get_config(args)
  
      return args, config
-@@ -95,9 +109,22 @@ def main(config):
+@@ -87,6 +101,10 @@ def main(config):
+     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
+     model = build_model(config)
+     logger.info(str(model))
++    
++    # get flops of the model.
++    flops = model.flops()
++    args.flops = flops
+ 
+     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+     logger.info(f"number of params: {n_parameters}")
+@@ -95,9 +113,22 @@ def main(config):
          logger.info(f"number of GFLOPs: {flops / 1e9}")
  
      model.cuda()
@@ -122,7 +133,7 @@ index 84230ea..d459965 100644
      model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
      loss_scaler = NativeScalerWithGradNormCount()
  
-@@ -177,6 +204,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -177,6 +208,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
  
      start = time.time()
      end = time.time()
@@ -131,7 +142,7 @@ index 84230ea..d459965 100644
      for idx, (samples, targets) in enumerate(data_loader):
          samples = samples.cuda(non_blocking=True)
          targets = targets.cuda(non_blocking=True)
-@@ -184,14 +213,14 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -184,14 +217,14 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
          if mixup_fn is not None:
              samples, targets = mixup_fn(samples, targets)
  
@@ -148,7 +159,34 @@ index 84230ea..d459965 100644
                                  parameters=model.parameters(), create_graph=is_second_order,
                                  update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
          if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
-@@ -236,12 +265,13 @@ def validate(config, data_loader, model):
+@@ -207,19 +240,25 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+         scaler_meter.update(loss_scale_value)
+         batch_time.update(time.time() - end)
+         end = time.time()
+-
++        throughput = args.batch_size / batch_time.val
++        throughput_avg = args.batch_size / batch_time.avg
+         if idx % config.PRINT_FREQ == 0:
+             lr = optimizer.param_groups[0]['lr']
+             wd = optimizer.param_groups[0]['weight_decay']
+             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+             etas = batch_time.avg * (num_steps - idx)
++            ratio = 3 if config.TRAIN.USE_CHECKPOINT else 4
++            # First mutiply by ratio: 1 for forward, 2 for backward, 1 for activation checkpoint. Then multiply by 2: 1MACs = 2FLOPs
++            tflops = ratio * 2 * args.flops * throughput / 1e12
+             logger.info(
+                 f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
+                 f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
+                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
++                f'throughput {throughput:.2f} ({throughput_avg: .2f})\t'
+                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
+                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
+                 f'loss_scale {scaler_meter.val:.4f} ({scaler_meter.avg:.4f})\t'
++                f'tflops {tflops:.2f}\t'
+                 f'mem {memory_used:.0f}MB')
+     epoch_time = time.time() - start
+     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
+@@ -236,12 +275,13 @@ def validate(config, data_loader, model):
      acc5_meter = AverageMeter()
  
      end = time.time()
