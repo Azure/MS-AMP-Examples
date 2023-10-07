@@ -49,7 +49,7 @@ index 0000000..67b4476
 +    WINDOW_SIZE: 7
 \ No newline at end of file
 diff --git a/main.py b/main.py
-index 84230ea..72cb858 100644
+index 84230ea..61aa366 100644
 --- a/main.py
 +++ b/main.py
 @@ -19,6 +19,7 @@ import torch.distributed as dist
@@ -99,17 +99,17 @@ index 84230ea..72cb858 100644
      config = get_config(args)
  
      return args, config
-@@ -87,6 +101,10 @@ def main(config):
-     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
+@@ -88,6 +102,10 @@ def main(config):
      model = build_model(config)
      logger.info(str(model))
-+    
+ 
 +    # get flops of the model.
 +    flops = model.flops()
 +    args.flops = flops
- 
++
      n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
      logger.info(f"number of params: {n_parameters}")
+     if hasattr(model, 'flops'):
 @@ -95,9 +113,22 @@ def main(config):
          logger.info(f"number of GFLOPs: {flops / 1e9}")
  
