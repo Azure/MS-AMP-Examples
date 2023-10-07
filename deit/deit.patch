@@ -1,5 +1,5 @@
 diff --git a/engine.py b/engine.py
-index ed10cea..e896068 100644
+index ed10cea..76665ef 100644
 --- a/engine.py
 +++ b/engine.py
 @@ -15,6 +15,9 @@ from timm.utils import accuracy, ModelEma
@@ -12,13 +12,19 @@ index ed10cea..e896068 100644
  
  def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
                      data_loader: Iterable, optimizer: torch.optim.Optimizer,
-@@ -27,6 +30,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+@@ -22,11 +25,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
+                     model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None,
+                     set_training_mode=True, args = None):
+     model.train(set_training_mode)
+-    metric_logger = utils.MetricLogger(delimiter="  ")
++    metric_logger = utils.MetricLogger(delimiter="  ", flops=args.flops)
+     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
      header = 'Epoch: [{}]'.format(epoch)
      print_freq = 10
  
 +    # amp_enable, fp8_enable, fp8_format='hybrid', max_history_len=1, amax_compute_algo='max'
 +    autocast_context = TeUtils.get_autocast(True, args.enable_te_fp8)
-+
++    
      for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
          samples = samples.to(device, non_blocking=True)
          targets = targets.to(device, non_blocking=True)
@@ -66,7 +72,7 @@ index ed10cea..e896068 100644
              loss = criterion(output, target)
  
 diff --git a/main.py b/main.py
-index bc8c418..588eaba 100644
+index bc8c418..98de2a9 100644
 --- a/main.py
 +++ b/main.py
 @@ -15,7 +15,9 @@ from timm.models import create_model
@@ -80,7 +86,7 @@ index bc8c418..588eaba 100644
  
  from datasets import build_dataset
  from engine import train_one_epoch, evaluate
-@@ -28,6 +30,11 @@ import models_v2
+@@ -28,6 +30,12 @@ import models_v2
  
  import utils
  
@@ -88,11 +94,12 @@ index bc8c418..588eaba 100644
 +import sys
 +sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../'))
 +
++from fvcore.nn import FlopCountAnalysis
 +from common.te_utils import replace_with_telinear
  
  def get_args_parser():
      parser = argparse.ArgumentParser('DeiT training and evaluation script', add_help=False)
-@@ -181,6 +188,13 @@ def get_args_parser():
+@@ -181,6 +189,13 @@ def get_args_parser():
      parser.add_argument('--world_size', default=1, type=int,
                          help='number of distributed processes')
      parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
@@ -106,16 +113,29 @@ index bc8c418..588eaba 100644
      return parser
  
  
-@@ -266,6 +280,8 @@ def main(args):
+@@ -205,6 +220,8 @@ def main(args):
+     dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
+     dataset_val, _ = build_dataset(is_train=False, args=args)
+ 
++    first_image = dataset_train[0][0]
++
+     if True:  # args.distributed:
+         num_tasks = utils.get_world_size()
+         global_rank = utils.get_rank()
+@@ -266,6 +283,12 @@ def main(args):
          img_size=args.input_size
      )
  
++    input = first_image.unsqueeze(0)
++    flops = FlopCountAnalysis(model, input).total()
++    args.flops = flops
++
 +    if args.enable_msamp or args.enable_te_fp8:
 +        model.head.use_fp32_linear = True
                      
      if args.finetune:
          if args.finetune.startswith('https'):
-@@ -336,17 +352,33 @@ def main(args):
+@@ -336,17 +359,33 @@ def main(args):
              device='cpu' if args.model_ema_force_cpu else '',
              resume='')
  
@@ -154,7 +174,7 @@ index bc8c418..588eaba 100644
  
      lr_scheduler, _ = create_scheduler(args, optimizer)
  
-@@ -406,7 +438,7 @@ def main(args):
+@@ -406,7 +445,7 @@ def main(args):
                  loss_scaler.load_state_dict(checkpoint['scaler'])
          lr_scheduler.step(args.start_epoch)
      if args.eval:
@@ -163,7 +183,7 @@ index bc8c418..588eaba 100644
          print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
          return
  
-@@ -434,13 +466,13 @@ def main(args):
+@@ -434,13 +473,13 @@ def main(args):
                      'optimizer': optimizer.state_dict(),
                      'lr_scheduler': lr_scheduler.state_dict(),
                      'epoch': epoch,
@@ -179,7 +199,7 @@ index bc8c418..588eaba 100644
          print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
          
          if max_accuracy < test_stats["acc1"]:
-@@ -453,7 +485,7 @@ def main(args):
+@@ -453,7 +492,7 @@ def main(args):
                          'optimizer': optimizer.state_dict(),
                          'lr_scheduler': lr_scheduler.state_dict(),
                          'epoch': epoch,
@@ -251,3 +271,67 @@ index 0000000..dba0819
 +    def load_state_dict(self, state_dict):
 +        self._scaler.load_state_dict(state_dict)
 \ No newline at end of file
+diff --git a/utils.py b/utils.py
+index d1064f6..67d02eb 100644
+--- a/utils.py
++++ b/utils.py
+@@ -14,7 +14,6 @@ import datetime
+ import torch
+ import torch.distributed as dist
+ 
+-
+ class SmoothedValue(object):
+     """Track a series of values and provide access to smoothed values over a
+     window or the global series average.
+@@ -78,9 +77,10 @@ class SmoothedValue(object):
+ 
+ 
+ class MetricLogger(object):
+-    def __init__(self, delimiter="\t"):
++    def __init__(self, delimiter="\t", flops=0):
+         self.meters = defaultdict(SmoothedValue)
+         self.delimiter = delimiter
++        self.flops = flops
+ 
+     def update(self, **kwargs):
+         for k, v in kwargs.items():
+@@ -127,16 +127,26 @@ class MetricLogger(object):
+             'eta: {eta}',
+             '{meters}',
+             'time: {time}',
+-            'data: {data}'
++            'data: {data}',
++            'throughput: {throughput}',
++            'tflops: {tflops:.2f}'
+         ]
+         if torch.cuda.is_available():
+             log_msg.append('max mem: {memory:.0f}')
++
+         log_msg = self.delimiter.join(log_msg)
+         MB = 1024.0 * 1024.0
++
+         for obj in iterable:
+             data_time.update(time.time() - end)
+             yield obj
++
++            batch_size = obj[0].shape[0]
+             iter_time.update(time.time() - end)
++            throughput = int(batch_size / iter_time.value)
++            # First mutiply by 3: 1 for forward, 2 for backward. Then multiply by 2: 1MACs = 2FLOPs
++            tflops = 3 * 2 * self.flops * throughput / 1e12
++
+             if i % print_freq == 0 or i == len(iterable) - 1:
+                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
+                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+@@ -145,7 +155,10 @@ class MetricLogger(object):
+                         i, len(iterable), eta=eta_string,
+                         meters=str(self),
+                         time=str(iter_time), data=str(data_time),
+-                        memory=torch.cuda.max_memory_allocated() / MB))
++                        throughput=throughput,
++                        tflops=tflops,
++                        memory=torch.cuda.max_memory_allocated() / MB,
++                        ))
+                 else:
+                     print(log_msg.format(
+                         i, len(iterable), eta=eta_string,
