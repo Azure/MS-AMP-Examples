@@ -49,7 +49,7 @@ index 0000000..67b4476
 +    WINDOW_SIZE: 7
 \ No newline at end of file
 diff --git a/main.py b/main.py
-index 84230ea..61aa366 100644
+index 84230ea..a40369e 100644
 --- a/main.py
 +++ b/main.py
 @@ -19,6 +19,7 @@ import torch.distributed as dist
@@ -104,8 +104,8 @@ index 84230ea..61aa366 100644
      logger.info(str(model))
  
 +    # get flops of the model.
-+    flops = model.flops()
-+    args.flops = flops
++    model_flops = model.flops()
++    args.model_flops = model_flops
 +
      n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
      logger.info(f"number of params: {n_parameters}")
@@ -159,13 +159,14 @@ index 84230ea..61aa366 100644
                                  parameters=model.parameters(), create_graph=is_second_order,
                                  update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
          if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
-@@ -207,19 +240,25 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
+@@ -207,19 +240,26 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
          scaler_meter.update(loss_scale_value)
          batch_time.update(time.time() - end)
          end = time.time()
 -
-+        throughput = args.batch_size / batch_time.val
-+        throughput_avg = args.batch_size / batch_time.avg
++        throughput_per_gpu = args.batch_size / batch_time.val
++        throughput = dist.get_world_size() * throughput_per_gpu
++        throughput_avg = dist.get_world_size() * args.batch_size / batch_time.avg
          if idx % config.PRINT_FREQ == 0:
              lr = optimizer.param_groups[0]['lr']
              wd = optimizer.param_groups[0]['weight_decay']
@@ -173,7 +174,7 @@ index 84230ea..61aa366 100644
              etas = batch_time.avg * (num_steps - idx)
 +            ratio = 3 if config.TRAIN.USE_CHECKPOINT else 4
 +            # First mutiply by ratio: 1 for forward, 2 for backward, 1 for activation checkpoint. Then multiply by 2: 1MACs = 2FLOPs
-+            tflops = ratio * 2 * args.flops * throughput / 1e12
++            tflops = ratio * 2 * args.model_flops * throughput_per_gpu / 1e12
              logger.info(
                  f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
                  f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
@@ -186,7 +187,7 @@ index 84230ea..61aa366 100644
                  f'mem {memory_used:.0f}MB')
      epoch_time = time.time() - start
      logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
-@@ -236,12 +275,13 @@ def validate(config, data_loader, model):
+@@ -236,12 +276,13 @@ def validate(config, data_loader, model):
      acc5_meter = AverageMeter()
  
      end = time.time()
