@@ -20,11 +20,7 @@ fairseq_train=`which fairseq-hydra-train`
 if [ "$amp_type" = "amp" ]; then
     echo "run RoBERTa base with AMP"
     SAVE_PATH=$PWD/checkpoints/roberta_amp/
-
-    python -m torch.distributed.launch \
-        --use_env \
-        --nproc_per_node=$GPU_NUM \
-        $fairseq_train \
+    $fairseq_train \
         --config-dir ../third_party/fairseq/examples/roberta/config/pretraining \
         --config-name base  \
         task.data=$DATA_PATH \
@@ -37,15 +33,13 @@ if [ "$amp_type" = "amp" ]; then
         checkpoint.save_interval_updates=500 \
         common.log_interval=20 \
         dataset.validate_interval_updates=500 \
-        distributed_training.ddp_backend=c10d
+        distributed_training.ddp_backend=c10d \
+        distributed_training.distributed_world_size=$GPU_NUM
 
 elif [ "$amp_type" = "msamp" ]; then
     echo "run RoBERTa base with MS-AMP"
     SAVE_PATH=$PWD/checkpoints/roberta_msamp/
-    python -m torch.distributed.launch \
-        --use_env \
-        --nproc_per_node=$GPU_NUM \
-        $fairseq_train \
+    $fairseq_train \
         --config-dir ../third_party/fairseq/examples/roberta/config/pretraining \
         --config-name base  \
         task.data=$DATA_PATH \
@@ -60,7 +54,8 @@ elif [ "$amp_type" = "msamp" ]; then
         dataset.validate_interval_updates=500 \
         common.msamp=True \
         common.msamp_opt_level=O2 \
-        distributed_training.ddp_backend=c10d
+        distributed_training.ddp_backend=c10d \
+        distributed_training.distributed_world_size=$GPU_NUM
 else
     echo $USAGE
     exit 1
