@@ -23,7 +23,7 @@ index ae42b83..f427bc5 100644
 +    return parser
 \ No newline at end of file
 diff --git a/megatron/checkpointing.py b/megatron/checkpointing.py
-index e88b585..107683a 100644
+index e88b585..320f2b2 100644
 --- a/megatron/checkpointing.py
 +++ b/megatron/checkpointing.py
 @@ -106,6 +106,59 @@ def get_checkpoint_name(checkpoints_path, iteration, release=False,
@@ -220,7 +220,7 @@ index e88b585..107683a 100644
      else:
 -        checkpoint_name = get_checkpoint_name(load_dir, iteration, release)
 +        args = get_args()
-+        checkpoint_names = get_checkpoint_names(load_dir, iteration, 
++        checkpoint_names = get_checkpoint_names(load_dir, iteration,
 +                                                  args.no_load_optim,
 +                                                  args.use_distributed_optimizer, release)
          if release:
@@ -599,7 +599,7 @@ index da9cd70..414fd88 100644
  def _zero_grad_group_helper(group, set_to_none):
      """Zero out the gradient for a group of parameters.
 diff --git a/megatron/training.py b/megatron/training.py
-index b821ae7..f844993 100644
+index b821ae7..99a7fad 100644
 --- a/megatron/training.py
 +++ b/megatron/training.py
 @@ -33,7 +33,7 @@ from megatron.initialize import initialize_megatron
@@ -653,3 +653,37 @@ index b821ae7..f844993 100644
      if wrap_with_ddp:
          if args.DDP_impl == 'torch':
              i = torch.cuda.current_device()
+@@ -629,6 +650,22 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
+     if iteration % args.log_interval == 0:
+         elapsed_time = timers('interval-time').elapsed(barrier=True)
+         elapsed_time_per_iteration = elapsed_time / total_iterations
++
++        # Compute throughput.
++        samples_per_sec = batch_size / elapsed_time_per_iteration
++
++        # Compute tflops.
++        seq_len = args.seq_length
++        hidden_size = args.hidden_size
++        num_layers = args.num_layers
++        vocab_size = args.padded_vocab_size
++
++        checkpoint_activations_factor = 4 if args.recompute_granularity else 3
++        print_rank_last(f'checkpoint_activations_factor: {checkpoint_activations_factor}')
++        coefficient = 24
++        flops_per_iteration = (coefficient * checkpoint_activations_factor * batch_size * seq_len * num_layers * (hidden_size**2)) * (1. + (seq_len / (6. * hidden_size)) + (vocab_size / (16. * num_layers * hidden_size)))
++        tflops = flops_per_iteration / (elapsed_time_per_iteration * args.world_size * (10**12))
++
+         if writer:
+             if args.log_timers_to_tensorboard:
+                 writer.add_scalar('iteration-time',
+@@ -660,6 +697,10 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
+             total_loss_dict[skipped_iters_key])
+         log_string += ' number of nan iterations: {:3d} |'.format(
+             total_loss_dict[nan_iters_key])
++
++        log_string += ' samples per second: {:.3f} |'.format(samples_per_sec)
++        log_string += ' TFLOPs: {:.2f} |'.format(tflops)
++
+         total_loss_dict[advanced_iters_key] = 0
+         total_loss_dict[skipped_iters_key] = 0
+         total_loss_dict[nan_iters_key] = 0
