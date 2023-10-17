@@ -163,7 +163,7 @@ index da1f9491..ec6e1732 100644
          self.last_device = None
          if self.cuda and self.pipeline_model_parallel:
 diff --git a/fairseq_cli/train.py b/fairseq_cli/train.py
-index 376bd1d0..2b10d49c 100644
+index 376bd1d0..75197bc0 100644
 --- a/fairseq_cli/train.py
 +++ b/fairseq_cli/train.py
 @@ -26,6 +26,7 @@ logger = logging.getLogger("fairseq_cli.train")
@@ -174,19 +174,14 @@ index 376bd1d0..2b10d49c 100644
  
  from fairseq import checkpoint_utils, options, quantization_utils, tasks, utils
  from fairseq.data import data_utils, iterators
-@@ -123,6 +124,21 @@ def main(cfg: FairseqConfig) -> None:
+@@ -123,6 +124,16 @@ def main(cfg: FairseqConfig) -> None:
          )
      )
  
 +    # compute model flops: create fake input and use fvcore to compute the model flops.
 +    tokens_per_sample = cfg.task.tokens_per_sample
 +    logger.info(f'tokens_per_sample: {tokens_per_sample}')
-+    token_ids = []
-+    token_ids.append(0)
-+
-+    for _ in range(tokens_per_sample - 2):
-+        token_ids.append(100)
-+    token_ids.append(2)
++    token_ids = [0] + [100] * (tokens_per_sample - 2) + [2]
 +    src_tokens = torch.tensor(token_ids).unsqueeze(0).cuda()
 +    with torch.no_grad():
 +        model.cuda()
@@ -196,7 +191,7 @@ index 376bd1d0..2b10d49c 100644
      # Load valid dataset (we load training data below, based on the latest checkpoint)
      # We load the valid dataset AFTER building the model
      data_utils.raise_if_valid_subsets_unintentionally_ignored(cfg)
-@@ -187,7 +203,7 @@ def main(cfg: FairseqConfig) -> None:
+@@ -187,7 +198,7 @@ def main(cfg: FairseqConfig) -> None:
              break
  
          # train for one epoch
@@ -205,7 +200,7 @@ index 376bd1d0..2b10d49c 100644
          if should_stop:
              break
  
-@@ -244,7 +260,7 @@ def should_stop_early(cfg: DictConfig, valid_loss: float) -> bool:
+@@ -244,7 +255,7 @@ def should_stop_early(cfg: DictConfig, valid_loss: float) -> bool:
  
  @metrics.aggregate("train")
  def train(
@@ -214,14 +209,14 @@ index 376bd1d0..2b10d49c 100644
  ) -> Tuple[List[Optional[float]], bool]:
      """Train the model for one epoch and return validation losses."""
      # Initialize data iterator
-@@ -320,6 +336,12 @@ def train(
+@@ -320,6 +331,12 @@ def train(
              num_updates = trainer.get_num_updates()
              if num_updates % cfg.common.log_interval == 0:
                  stats = get_training_stats(metrics.get_smoothed_values("train_inner"))
 +                throughput = stats["bsz"] * stats["ups"]
 +                stats["throughput"] = throughput
 +                throughput_per_gpu = throughput / cfg.distributed_training.distributed_world_size
-+                # The reason of x 3: 1 forward + 2 backward. The reason of x 2: 1MACC = 2FLOPS
++                # The reason of x 3: 1 forward + 2 backward. The reason of x 2: 1MACs = 2FLOPs
 +                stats["tflops"] = throughput_per_gpu * 3 * 2 * model_flops / 1e12
 +
                  progress.log(stats, tag="train_inner", step=num_updates)
