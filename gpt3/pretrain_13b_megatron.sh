@@ -5,7 +5,7 @@
 
 set -e
 
-USAGE="usage: bash pretrain_13b.sh [bf16|msamp]"
+USAGE="usage: bash pretrain_13b_megatron.sh [bf16|te|msamp]"
 
 if [ "$#" -ne 1 ]; then
   echo $USAGE
@@ -52,7 +52,7 @@ GPT_ARGS="
     --lr 2.0e-4 \
     --min-lr 2.0e-5 \
     --lr-decay-style cosine \
-    --micro-batch-size 2 \
+    --micro-batch-size 1 \
     --global-batch-size 1280 \
     --clip-grad 1.0 \
     --weight-decay 0.1 \
@@ -86,17 +86,34 @@ OUTPUT_ARGS="
 "
 
 if [ "$FP_TYPE" = "bf16" ]; then
-    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
-        $GPT_ARGS \
-        $DATA_ARGS \
-        $OUTPUT_ARGS
-
-elif [ "$FP_TYPE" = "msamp" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_bf16
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
-        --msamp
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
+elif [ "$FP_TYPE" = "te" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_te
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
+elif [ "$FP_TYPE" = "msamp" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_msamp
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine \
+        --msamp \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
 else
     echo $USAGE
     exit 1

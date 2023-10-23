@@ -4,7 +4,7 @@
 
 set -e
 
-USAGE="usage: bash pretrain_345m.sh [fp16|msamp]"
+USAGE="usage: bash pretrain_345m_megatron_ds.sh [fp16|msamp]"
 
 if [ "$#" -ne 1 ]; then
   echo $USAGE
