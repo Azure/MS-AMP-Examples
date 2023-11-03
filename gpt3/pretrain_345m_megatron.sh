@@ -4,7 +4,7 @@
 
 set -e
 
-USAGE="usage: bash pretrain_345m_megatron.sh [fp16|msamp]"
+USAGE="usage: bash pretrain_345m_megatron.sh [bf16|te|msamp]"
 
 if [ "$#" -ne 1 ]; then
   echo $USAGE
@@ -50,7 +50,7 @@ GPT_ARGS="
     --weight-decay 1e-2 \
     --lr-warmup-fraction .01 \
     --clip-grad 1.0 \
-    --fp16 \
+    --bf16 \
     --use-flash-attn \
     --no-gradient-accumulation-fusion \
     --use-distributed-optimizer
@@ -71,12 +71,23 @@ OUTPUT_ARGS="
     --eval-iters 10
 "
 
-if [ "$FP_TYPE" = "fp16" ]; then
-    CHECKPOINT_PATH=$PWD/checkpoints/gpt_345m_fp16
+if [ "$FP_TYPE" = "bf16" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_345m_bf16
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
+
+elif [ "$FP_TYPE" = "te" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_345m_te
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine \
         --save $CHECKPOINT_PATH \
         --load $CHECKPOINT_PATH
 
@@ -86,6 +97,8 @@ elif [ "$FP_TYPE" = "msamp" ]; then
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine \
         --msamp \
         --save $CHECKPOINT_PATH \
         --load $CHECKPOINT_PATH

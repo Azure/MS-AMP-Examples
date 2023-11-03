@@ -33,10 +33,16 @@ git apply ../../gpt3/Megatron-LM.patch
 cd ../../gpt3
 ```
 
-## Pretrain GPT3-345m with fp16
-Run the following command to train 345M GPT3 using fp16:
+## Pretrain GPT3-345m with bf16
+Run the following command to train 345M GPT3 using bf16:
 ```bash
-bash pretrain_345m_megatron.sh fp16
+bash pretrain_345m_megatron.sh bf16
+```
+
+## Pretrain GPT-345m with Transformer-Engine
+Run the following command to train 345M GPT3 using Transformer-Engine:
+```bash
+bash pretrain_345m_megatron.sh te
 ```
 
 ## Pretrain GPT3-345m with MS-AMP
@@ -44,6 +50,7 @@ Run the following command to train 345M GPT3 using MS-AMP:
 ```bash
 bash pretrain_345m_megatron.sh msamp
 ```
+
 ## Pretrain GPT3-13b with bf16
 Run the following command to train 13B GPT3 using bf16:
 ```bash
@@ -51,6 +58,7 @@ bash pretrain_13b_megatron.sh bf16
 ```
 
 ## Pretrain GPT3-13b with Transformer-Engine
+Run the following command to train 13B GPT3 using Transformer-Engine:
 ```bash
 bash pretrain_13b_megatron te
 ```
