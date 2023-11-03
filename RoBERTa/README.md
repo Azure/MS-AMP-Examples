@@ -12,6 +12,7 @@ git apply ../../RoBERTa/fairseq.patch
 You need to install fairseq before training RoBERTa. It is recommended to use venv for virtual environments, but it is not strictly necessary.
 ```
 pip install --no-build-isolation -v -e .
+pip install fvcore
 cd -
 ```
 You can verify if the installation of fairseq is successful by executing `python -c "import fairseq; print(fairseq.__version__)"`.
