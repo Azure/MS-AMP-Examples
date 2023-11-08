@@ -8,7 +8,7 @@ pip install einops nltk wikiextractor
 ```
 
 ## Data preparation
-Currently we haven't published the data we use in this example. But we provide a script of preprocessing Wikipedia data from scatch. You can also also use your own data.
+Currently we haven't published the data we use in this example. But we provide a script of preprocessing Wikipedia data from scatch. Make sure you have more than 40GB space on your disk and it may take ~4 hours. You can also also use your own data.
 
 ```bash
 bash prepare_wikipedia.sh
