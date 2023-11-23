@@ -56,14 +56,14 @@ Run the following command to train 13B GPT3 using bf16, Transformer-Engine and M
 ```bash
 bash pretrain_13b_megatron.sh bf16
 bash pretrain_13b_megatron.sh te
-bash pretrain_13b_megatron msamp
+bash pretrain_13b_megatron.sh msamp
 ```
 You may get out-of-memory error when using Tranformer-Engine since Transformer-Engine consumes more memory than bf16 and MS-AMP. 
 
 ## Using Megatron-DeepSpeed
 
 ### Apply patch to Megatron-DeepSpeed
-We made a few changes to the official Megatron-DeepSpeed and packaged it into a patch. You need to apply this patch to third_party/Megatron-LM.
+We made a few changes to the official Megatron-DeepSpeed and packaged it into a patch. You need to apply this patch to third_party/Megatron-DeepSpeed.
 ```bash
 cd ../third_party/Megatron-DeepSpeed
 git apply ../../gpt3/Megatron-DeepSpeed.patch
@@ -87,7 +87,7 @@ bash pretrain_13b_megatron_ds.sh msamp
 
 ## Multi-node training
 If you want to train GPT-3 with Megatron-LM using multiple nodes, you need:
-- Upload data to a shared storage and mount the shared storage to each node.
+- Upload training data to a shared storage and mount the shared storage to each node.
 - Change MASTER_ADDR, NNODES, NODE_RANK in the script.
 - [optional] Set some environment variables related to RDMA before running the script. For example, if you are using [ND H100 v5](https://learn.microsoft.com/en-us/azure/virtual-machines/nd-h100-v5-series), you need to set these environment variables:
   ```bash
@@ -98,4 +98,4 @@ If you want to train GPT-3 with Megatron-LM using multiple nodes, you need:
   export NCCL_TOPO_FILE=/opt/microsoft/ndv5-topo.xml
   export NCCL_DEBUG=WARN
   ```
-- Use a parallel ssh tool to start the script in all nodes.
+- Use a parallel ssh tool to start the script on all nodes.
