@@ -1,5 +1,5 @@
 diff --git a/megatron/arguments.py b/megatron/arguments.py
-index ae42b83e..5c4b615f 100644
+index ae42b83e..167edbfc 100644
 --- a/megatron/arguments.py
 +++ b/megatron/arguments.py
 @@ -38,6 +38,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
@@ -10,7 +10,7 @@ index ae42b83e..5c4b615f 100644
  
      # Custom arguments.
      if extra_args_provider is not None:
-@@ -1306,3 +1307,17 @@ def _add_vision_args(parser):
+@@ -1306,3 +1307,19 @@ def _add_vision_args(parser):
                         help='warmup teacher temperaure epochs')
  
      return parser
@@ -23,9 +23,11 @@ index ae42b83e..5c4b615f 100644
 +    # Auto scaling factor tuning for FP8 collective communication
 +    group.add_argument('--wgrad-auto-scaling', action='store_true', default=False,
 +                       help='whether to enable auto scaling factor tuning on weight gradients reduction')
++    group.add_argument('--wgrad-auto-scaling-freq', type=int, default=10,
++                       help='the frequency of checking whether overflow exists in the result of weight gradients reduction')
 +    group.add_argument('--wgrad-auto-scaling-ratio', type=float, default=1e-5,
 +                       help='the threshold of overflow ratio for auto scaling factor tuning on weight gradients reduction')
-+    group.add_argument('--wgrad-auto-scaling-window', type=int, default=1000,
++    group.add_argument('--wgrad-auto-scaling-window', type=int, default=100,
 +                       help='the window size for auto scaling factor tuning on weight gradients reduction')
 +    return parser
 diff --git a/megatron/checkpointing.py b/megatron/checkpointing.py
