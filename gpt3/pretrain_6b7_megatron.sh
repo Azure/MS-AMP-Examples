@@ -91,13 +91,17 @@ if [ "$FP_TYPE" = "bf16" ]; then
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
-        $OUTPUT_ARGS
+        $OUTPUT_ARGS \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH
 elif [ "$FP_TYPE" = "te" ]; then
     CHECKPOINT_PATH=$PWD/checkpoints/gpt_6b7_te
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH \
         --fp8-hybrid \
         --transformer-impl transformer_engine
 elif [ "$FP_TYPE" = "msamp" ]; then
@@ -106,6 +110,8 @@ elif [ "$FP_TYPE" = "msamp" ]; then
         $GPT_ARGS \
         $DATA_ARGS \
         $OUTPUT_ARGS \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH \
         --fp8-hybrid \
         --transformer-impl transformer_engine \
         --msamp
