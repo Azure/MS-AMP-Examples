@@ -1,5 +1,5 @@
 diff --git a/megatron/arguments.py b/megatron/arguments.py
-index ae42b83..f427bc5 100644
+index ae42b83e..f427bc50 100644
 --- a/megatron/arguments.py
 +++ b/megatron/arguments.py
 @@ -38,6 +38,7 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
@@ -23,7 +23,7 @@ index ae42b83..f427bc5 100644
 +    return parser
 \ No newline at end of file
 diff --git a/megatron/checkpointing.py b/megatron/checkpointing.py
-index e88b585..320f2b2 100644
+index e88b5851..320f2b24 100644
 --- a/megatron/checkpointing.py
 +++ b/megatron/checkpointing.py
 @@ -106,6 +106,59 @@ def get_checkpoint_name(checkpoints_path, iteration, release=False,
@@ -406,7 +406,7 @@ index e88b585..320f2b2 100644
                                only_context_model=False, custom_load_path=None):
      """
 diff --git a/megatron/core/tensor_parallel/layers.py b/megatron/core/tensor_parallel/layers.py
-index a86444c..600f49d 100644
+index a86444cc..600f49d8 100644
 --- a/megatron/core/tensor_parallel/layers.py
 +++ b/megatron/core/tensor_parallel/layers.py
 @@ -439,7 +439,9 @@ def linear_with_grad_accumulation_and_async_allreduce(
@@ -531,8 +531,23 @@ index a86444c..600f49d 100644
      def forward(self, input_):
          """Forward of RowParallelLinear
  
+diff --git a/megatron/model/transformer.py b/megatron/model/transformer.py
+index 7aca206c..1368434a 100644
+--- a/megatron/model/transformer.py
++++ b/megatron/model/transformer.py
+@@ -1418,8 +1418,8 @@ class ParallelTransformer(MegatronModule):
+                     tp_group=mpu.get_tensor_model_parallel_group(),
+                     get_rng_state_tracker=tensor_parallel.get_cuda_rng_tracker,
+                     fuse_wgrad_accumulation=config.gradient_accumulation_fusion,
+-                    apply_query_key_layer_scaling=config.apply_query_key_layer_scaling,
+-                    attention_softmax_in_fp32=config.attention_softmax_in_fp32,
++                    # apply_query_key_layer_scaling=config.apply_query_key_layer_scaling,
++                    # attention_softmax_in_fp32=config.attention_softmax_in_fp32,
+                     seq_length=args.seq_length,
+                     micro_batch_size=args.micro_batch_size,
+                     sequence_parallel=config.sequence_parallel,
 diff --git a/megatron/optimizer/__init__.py b/megatron/optimizer/__init__.py
-index 484e9b3..e85984d 100644
+index 484e9b32..e85984d7 100644
 --- a/megatron/optimizer/__init__.py
 +++ b/megatron/optimizer/__init__.py
 @@ -5,10 +5,12 @@ from apex.optimizers import FusedSGD as SGD
@@ -577,7 +592,7 @@ index 484e9b3..e85984d 100644
          optimizer = SGD(param_groups,
                          lr=args.lr,
 diff --git a/megatron/optimizer/optimizer.py b/megatron/optimizer/optimizer.py
-index da9cd70..414fd88 100644
+index da9cd70f..414fd887 100644
 --- a/megatron/optimizer/optimizer.py
 +++ b/megatron/optimizer/optimizer.py
 @@ -13,13 +13,15 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
@@ -599,7 +614,7 @@ index da9cd70..414fd88 100644
  def _zero_grad_group_helper(group, set_to_none):
      """Zero out the gradient for a group of parameters.
 diff --git a/megatron/training.py b/megatron/training.py
-index b821ae7..99a7fad 100644
+index b821ae7b..99a7fadb 100644
 --- a/megatron/training.py
 +++ b/megatron/training.py
 @@ -33,7 +33,7 @@ from megatron.initialize import initialize_megatron
