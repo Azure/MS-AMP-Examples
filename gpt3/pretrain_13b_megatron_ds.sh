@@ -22,7 +22,7 @@ MASTER_PORT=6001
 DATA_PATH=$PWD/data/wikipedia_text_document
 DATA_PATH=$PWD/data/wikipedia_text_document
 DATASET="1.0 ${DATA_PATH}"
-BS=4 
+BS=4
 PP=1
 TP=2
 CLIP_GRAD=1.0
@@ -116,7 +116,7 @@ export CUDA_DEVICE_MAX_CONNECTIONS=1
 if [ "$FP_TYPE" = "bf16" ]; then
   echo "run 13b GPT3 with bf16"
   CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_bf16
-  python -m torch.distributed.launch $DISTRIBUTED_ARGS \
+  torchrun $DISTRIBUTED_ARGS \
     ../third_party/Megatron-DeepSpeed/pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
@@ -127,7 +127,7 @@ if [ "$FP_TYPE" = "bf16" ]; then
 elif [ "$FP_TYPE" = "msamp" ]; then
   echo "run 13b GPT3 with msamp"
   CHECKPOINT_PATH=$PWD/checkpoints/gpt_13b_msamp
-  python -m torch.distributed.launch $DISTRIBUTED_ARGS \
+  torchrun $DISTRIBUTED_ARGS \
     ../third_party/Megatron-DeepSpeed/pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
