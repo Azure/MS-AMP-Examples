@@ -33,6 +33,8 @@ git apply ../../gpt3/Megatron-LM.patch
 cd ../../gpt3
 ```
 
+Please note that if you are using GPU that does not support FP8 computation, such as Nvidia A100, you need to delete `--fp8-hybrid` in pretrain_xx_megatron.sh first.
+
 ### Pretrain GPT3-345m
 Run the following command to train 345M GPT3 using bf16, Transformer-Engine and MS-AMP:
 ```bash
