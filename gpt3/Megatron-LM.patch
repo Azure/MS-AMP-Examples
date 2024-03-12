@@ -148,6 +148,83 @@ index a86444cc..600f49d8 100644
      def forward(self, input_):
          """Forward of RowParallelLinear
  
+diff --git a/megatron/fused_kernels/__init__.py b/megatron/fused_kernels/__init__.py
+index 87cceac3..8a01d51d 100644
+--- a/megatron/fused_kernels/__init__.py
++++ b/megatron/fused_kernels/__init__.py
+@@ -4,6 +4,7 @@ import os
+ import pathlib
+ import subprocess
+ 
++import torch
+ from torch.utils import cpp_extension
+ 
+ # Setting this param to a list has a problem of generating different
+@@ -18,15 +19,16 @@ def load(args):
+ 
+     # Check if cuda 11 is installed for compute capability 8.0
+     cc_flag = []
+-    _, bare_metal_major, bare_metal_minor = _get_cuda_bare_metal_version(
+-        cpp_extension.CUDA_HOME
+-    )
+-    if int(bare_metal_major) >= 11:
+-        cc_flag.append('-gencode')
+-        cc_flag.append('arch=compute_80,code=sm_80')
+-        if int(bare_metal_minor) >= 8:
++    if torch.version.hip is None:
++        _, bare_metal_major, bare_metal_minor = _get_cuda_bare_metal_version(
++            cpp_extension.CUDA_HOME
++        )
++        if int(bare_metal_major) >= 11:
+             cc_flag.append('-gencode')
+-            cc_flag.append('arch=compute_90,code=sm_90')
++            cc_flag.append('arch=compute_80,code=sm_80')
++            if int(bare_metal_minor) >= 8:
++                cc_flag.append('-gencode')
++                cc_flag.append('arch=compute_90,code=sm_90')
+ 
+     # Build path
+     srcpath = pathlib.Path(__file__).parent.absolute()
+@@ -35,6 +37,12 @@ def load(args):
+ 
+     # Helper function to build the kernels.
+     def _cpp_extention_load_helper(name, sources, extra_cuda_flags):
++        if torch.version.hip is not None:
++            extra_cuda_cflags=['-O3'] + extra_cuda_flags + cc_flag
++        else:
++            extra_cuda_cflags=['-O3',
++                               '-gencode', 'arch=compute_70,code=sm_70',
++                               '--use_fast_math'] + extra_cuda_flags + cc_flag
+         return cpp_extension.load(
+             name=name,
+             sources=sources,
+@@ -42,12 +50,7 @@ def load(args):
+             extra_cflags=[
+                 "-O3",
+             ],
+-            extra_cuda_cflags=[
+-                "-O3",
+-                "-gencode",
+-                "arch=compute_70,code=sm_70",
+-                "--use_fast_math",
+-            ]
++            extra_cuda_cflags=extra_cuda_cflags
+             + extra_cuda_flags
+             + cc_flag,
+             verbose=(args.rank == 0),
+diff --git a/megatron/initialize.py b/megatron/initialize.py
+index f85944e8..8ecaca72 100644
+--- a/megatron/initialize.py
++++ b/megatron/initialize.py
+@@ -264,7 +264,7 @@ def set_jit_fusion_options():
+     # flags required to enable jit fusion kernels
+     TORCH_MAJOR = int(torch.__version__.split(".")[0])
+     TORCH_MINOR = int(torch.__version__.split(".")[1])
+-    if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR >= 10):
++    if ((TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR >= 10)) and torch.version.hip is None:
+         # nvfuser
+         torch._C._jit_set_profiling_executor(True)
+         torch._C._jit_set_profiling_mode(True)
 diff --git a/megatron/model/transformer.py b/megatron/model/transformer.py
 index 7aca206c..1368434a 100644
 --- a/megatron/model/transformer.py
