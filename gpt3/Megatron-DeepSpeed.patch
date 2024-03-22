@@ -22,6 +22,106 @@ index bdd1745..4058c11 100644
 +    group.add_argument('--msamp-opt-level', type=str, default='O2', choices=['O1', 'O2', 'O3'],
 +                       help='MS-AMP optimization level')
 +    return parser
+diff --git a/megatron/fused_kernels/layer_norm_cuda_kernel.cu b/megatron/fused_kernels/layer_norm_cuda_kernel.cu
+index 8a07806..7336f45 100644
+--- a/megatron/fused_kernels/layer_norm_cuda_kernel.cu
++++ b/megatron/fused_kernels/layer_norm_cuda_kernel.cu
+@@ -246,21 +246,21 @@ void cuWelfordMuSigma2(
+     }
+   }
+ }
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+ template<typename U> U rsqrt(U v) {
+ #else
+ template<typename U> __device__ U rsqrt(U v) {
+ #endif
+   return U(1) / sqrt(v);
+ }
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+ template<> float rsqrt(float v) {
+ #else
+ template<> __device__ float rsqrt(float v) {
+ #endif
+   return rsqrtf(v);
+ }
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+ template<> double rsqrt(double v) {
+ #else
+ template<> __device__ double rsqrt(double v) {
+@@ -316,7 +316,7 @@ void cuApplyLayerNorm(
+   // 1) blockDim.x == warpSize
+   // 2) Tensors are contiguous
+   //
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+   for (auto i1=blockIdx.y; i1 < n1; i1 += gridDim.y) {
+ #else
+   for (int i1=blockIdx.y; i1 < n1; i1 += gridDim.y) {
+@@ -559,7 +559,7 @@ void cuComputeGradInput(
+     const V* gamma,
+     T* grad_input)
+ {
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+   for (auto i1=blockIdx.y; i1 < n1; i1 += gridDim.y) {
+ #else
+   for (int i1=blockIdx.y; i1 < n1; i1 += gridDim.y) {
+@@ -689,7 +689,7 @@ void HostApplyLayerNorm(
+     auto stream = at::cuda::getCurrentCUDAStream().stream();
+     const int warp_size = at::cuda::warp_size();
+     dim3 threads(warp_size,4,1);
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+     threads.y = 1;
+ #endif
+     const uint64_t maxGridY =
+@@ -765,7 +765,7 @@ void HostLayerNormGradient(
+ 
+     if (gamma != NULL && beta != NULL) {
+       // compute grad_gamma(j) and grad_beta(j)
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+       const int part_size = warp_size;
+ #else
+       const int part_size = 16;
+@@ -806,7 +806,7 @@ void HostLayerNormGradient(
+       at::cuda::getCurrentDeviceProperties()->maxGridSize[1];
+     const dim3 blocks1(1, std::min((uint64_t)n1, maxGridY), 1);
+     dim3 threads1(warp_size,4,1);
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+     threads1.y = 2;
+ #endif
+     int nshared =
+diff --git a/megatron/fused_kernels/scaled_masked_softmax_cuda.cu b/megatron/fused_kernels/scaled_masked_softmax_cuda.cu
+index c034dc3..37613ee 100644
+--- a/megatron/fused_kernels/scaled_masked_softmax_cuda.cu
++++ b/megatron/fused_kernels/scaled_masked_softmax_cuda.cu
+@@ -18,7 +18,7 @@
+ #include <cuda.h>
+ #include <cuda_runtime.h>
+ #include <cuda_fp16.h>
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+ #include <cuda_profiler_api.h>
+ #endif
+ #include <ATen/cuda/CUDAContext.h>
+diff --git a/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu b/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu
+index 59e4525..c99c743 100644
+--- a/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu
++++ b/megatron/fused_kernels/scaled_upper_triang_masked_softmax_cuda.cu
+@@ -18,7 +18,7 @@
+ #include <cuda.h>
+ #include <cuda_runtime.h>
+ #include <cuda_fp16.h>
+-#ifndef __HIP_PLATFORM_HCC__
++#ifndef __HIP_PLATFORM_AMD__
+ #include <cuda_profiler_api.h>
+ #endif
+ #include <ATen/cuda/CUDAContext.h>
 diff --git a/megatron/mpu/__init__.py b/megatron/mpu/__init__.py
 index 32bb5fc..dd894a4 100644
 --- a/megatron/mpu/__init__.py
