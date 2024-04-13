@@ -1,0 +1,233 @@
+diff --git a/megatron/model/transformer.py b/megatron/model/transformer.py
+index 692eac3..7c5f321 100644
+--- a/megatron/model/transformer.py
++++ b/megatron/model/transformer.py
+@@ -717,9 +717,17 @@ class ParallelTransformer(MegatronModule):
+         mpu.reset_checkpointed_activations_memory_buffer()
+         l = 0
+         while l < self.num_layers:
+-            hidden_states, *local_moe_losses = mpu.checkpoint(
+-                custom(l, l + self.checkpoint_num_layers),
+-                hidden_states, attention_mask, encoder_output, enc_dec_attn_mask)
++            #    mpu.checkpoint
++            #    custom(l, l + self.checkpoint_num_layers),
++            #    hidden_states, attention_mask, encoder_output, enc_dec_attn_mask)
++            import transformer_engine.pytorch as te
++
++            hidden_states, *local_moe_losses = te.checkpoint(custom(l, l + self.checkpoint_num_layers),
++                          False,
++                          mpu.get_cuda_rng_tracker,
++                          mpu.get_tensor_model_parallel_group(),
++                          hidden_states, attention_mask, encoder_output, enc_dec_attn_mask)
++
+             moe_losses.extend(local_moe_losses)
+             l += self.checkpoint_num_layers
+ 
+@@ -764,33 +772,38 @@ class ParallelTransformer(MegatronModule):
+ 
+             if encoder_output is not None:
+                  encoder_output = encoder_output.transpose(0, 1).contiguous()
+-
+-        moe_losses = []
+-        if self.checkpoint_activations:
+-            hidden_states, moe_losses = self._checkpointed_forward(hidden_states,
+-                                                       attention_mask,
+-                                                       encoder_output,
+-                                                       enc_dec_attn_mask)
+-        else:
+-            if get_key_value:
+-                presents = []
+-            for index in range(self.num_layers):
+-                layer = self._get_layer(index)
+-                past = None
+-                if layer_past is not None:
+-                    past = layer_past[index]
+-                hidden_states = layer(hidden_states,
+-                                      attention_mask=attention_mask,
+-                                      encoder_output=encoder_output,
+-                                      enc_dec_attn_mask=enc_dec_attn_mask,
+-                                      layer_past=past,
+-                                      get_key_value=get_key_value)
+-                if not self.ds_inference:
+-                    hidden_states, moe_loss = hidden_states
+-                    moe_losses.append(moe_loss)
++        
++        import transformer_engine
++        from transformer_engine.common.recipe import Format, DelayedScaling
++        fp8_format = Format.HYBRID
++        fp8_recipe = DelayedScaling(fp8_format=fp8_format, amax_history_len=16, amax_compute_algo="max")
++        with transformer_engine.pytorch.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe, fp8_group=mpu.get_data_parallel_group()):
++            moe_losses = []
++            if self.checkpoint_activations:
++                hidden_states, moe_losses = self._checkpointed_forward(hidden_states,
++                                                        attention_mask,
++                                                        encoder_output,
++                                                        enc_dec_attn_mask)
++            else:
+                 if get_key_value:
+-                    hidden_states, present = hidden_states
+-                    presents.append(present)
++                    presents = []
++                for index in range(self.num_layers):
++                    layer = self._get_layer(index)
++                    past = None
++                    if layer_past is not None:
++                        past = layer_past[index]
++                    hidden_states = layer(hidden_states,
++                                        attention_mask=attention_mask,
++                                        encoder_output=encoder_output,
++                                        enc_dec_attn_mask=enc_dec_attn_mask,
++                                        layer_past=past,
++                                        get_key_value=get_key_value)
++                    if not self.ds_inference:
++                        hidden_states, moe_loss = hidden_states
++                        moe_losses.append(moe_loss)
++                    if get_key_value:
++                        hidden_states, present = hidden_states
++                        presents.append(present)
+ 
+         # Final layer norm.
+         if self.post_process:
+diff --git a/megatron/mpu/layers.py b/megatron/mpu/layers.py
+index 5d168c6..d7bd3f9 100644
+--- a/megatron/mpu/layers.py
++++ b/megatron/mpu/layers.py
+@@ -21,6 +21,8 @@
+ import math
+ 
+ import torch
++import torch.distributed
++import torch.nn as nn
+ import torch.nn.functional as F
+ import torch.nn.init as init
+ from torch.nn.parameter import Parameter
+@@ -39,6 +41,8 @@ from megatron import get_args
+ import deepspeed.runtime.activation_checkpointing.checkpointing as ds_checkpointing
+ from deepspeed.accelerator import get_accelerator
+ 
++import transformer_engine.pytorch as te
++
+ _MODEL_PARALLEL_ATTRIBUTE_DEFAULTS = {'tensor_model_parallel': False,
+                                       'partition_dim': -1,
+                                       'partition_stride': 1}
+@@ -254,36 +258,45 @@ class ColumnParallelLinear(torch.nn.Module):
+         # Initialize weight.
+         args = get_args()
+         if args.use_cpu_initialization:
+-            self.weight = Parameter(torch.empty(self.output_size_per_partition,
++            _weight = Parameter(torch.empty(self.output_size_per_partition,
+                                                 self.input_size,
+                                                 dtype=args.params_dtype))
+             self.master_weight = _initialize_affine_weight_cpu(
+-                self.weight, self.output_size, self.input_size,
++                _weight, self.output_size, self.input_size,
+                 self.output_size_per_partition, 0, init_method,
+                 stride=stride, return_master_weight=keep_master_weight_for_test)
+         else:
+-            self.weight = Parameter(torch.empty(
++            _weight = Parameter(torch.empty(
+                 self.output_size_per_partition, self.input_size,
+                 device=get_accelerator().current_device_name(), dtype=args.params_dtype))
+-            _initialize_affine_weight_gpu(self.weight, init_method,
++            _initialize_affine_weight_gpu(_weight, init_method,
+                                           partition_dim=0, stride=stride)
+             
+         if bias:
+             if args.use_cpu_initialization:
+-                self.bias = Parameter(torch.empty(
++                _bias = Parameter(torch.empty(
+                     self.output_size_per_partition, dtype=args.params_dtype))
+             else:
+-                self.bias = Parameter(torch.empty(
++                _bias = Parameter(torch.empty(
+                     self.output_size_per_partition,
+                     device=get_accelerator().current_device_name(),
+                     dtype=args.params_dtype))
+-            set_tensor_model_parallel_attributes(self.bias, True, 0, stride)
++            set_tensor_model_parallel_attributes(_bias, True, 0, stride)
+             # Always initialize bias to zero.
+             with torch.no_grad():
+-                self.bias.zero_()
++                _bias.zero_()
+         else:
+             self.register_parameter('bias', None)
+ 
++        #self.linear = nn.Linear(out_features=self.output_size_per_partition, in_features=self.input_size,
++        #                        bias=not self.skip_bias_add, dtype=args.params_dtype)
++        self.linear = te.Linear(out_features=self.output_size_per_partition, in_features=self.input_size, 
++                                bias=not self.skip_bias_add, params_dtype=args.params_dtype)
++        self.linear.weight = _weight
++        if not self.skip_bias_add:
++            self.linear.bias = _bias
++        else:
++            self.output_bias = _bias
+ 
+ 
+     def forward(self, input_):
+@@ -294,15 +307,14 @@ class ColumnParallelLinear(torch.nn.Module):
+             input_parallel = copy_to_tensor_model_parallel_region(input_)
+ 
+         # Matrix multiply.
++        output_parallel = self.linear(input_parallel)
+ 
+-        bias = self.bias if not self.skip_bias_add else None
+-        output_parallel = F.linear(input_parallel, self.weight, bias)
+         if self.gather_output and not self.is_expert_without_slicing:
+             # All-gather across the partitions.
+             output = gather_from_tensor_model_parallel_region(output_parallel)
+         else:
+-            output = output_parallel 
+-        output_bias = self.bias if self.skip_bias_add else None
++            output = output_parallel
++        output_bias = self.output_bias if self.skip_bias_add else None
+         return output, output_bias
+ 
+ 
+@@ -365,18 +377,18 @@ class RowParallelLinear(torch.nn.Module):
+         # Initialize weight.
+         args = get_args()
+         if args.use_cpu_initialization:
+-            self.weight = Parameter(torch.empty(self.output_size,
++            _weight = Parameter(torch.empty(self.output_size,
+                                                 self.input_size_per_partition,
+                                                 dtype=args.params_dtype))
+             self.master_weight = _initialize_affine_weight_cpu(
+-                self.weight, self.output_size, self.input_size,
++                _weight, self.output_size, self.input_size,
+                 self.input_size_per_partition, 1, init_method,
+                 stride=stride, return_master_weight=keep_master_weight_for_test)
+         else:
+-            self.weight = Parameter(torch.empty(
++            _weight = Parameter(torch.empty(
+                 self.output_size, self.input_size_per_partition,
+                 device=get_accelerator().current_device_name(), dtype=args.params_dtype))
+-            _initialize_affine_weight_gpu(self.weight, init_method,
++            _initialize_affine_weight_gpu(_weight, init_method,
+                                           partition_dim=1, stride=stride)
+         if bias:
+             if args.use_cpu_initialization:
+@@ -392,6 +404,14 @@ class RowParallelLinear(torch.nn.Module):
+         else:
+             self.register_parameter('bias', None)
+ 
++        assert skip_bias_add
++        #self.linear = nn.Linear(out_features=self.output_size, in_features=self.input_size_per_partition,
++        #                        bias=False, dtype=args.params_dtype)
++        self.linear = te.Linear(out_features=self.output_size, in_features=self.input_size_per_partition,
++                                bias=False, params_dtype=args.params_dtype)
++        if torch.distributed.get_rank() == 0:
++            print(f'use te.Linear for RowParallelLinear')
++        self.linear.weight = _weight
+ 
+ 
+     def forward(self, input_):
+@@ -401,7 +421,8 @@ class RowParallelLinear(torch.nn.Module):
+         else:
+             input_parallel = scatter_to_tensor_model_parallel_region(input_)
+         # Matrix multiply.
+-        output_parallel = F.linear(input_parallel, self.weight)
++        output_parallel = self.linear(input_parallel)
++
+         # All-reduce across all the partitions.
+         if self.is_expert_without_slicing: # non-expert only tensor-parallelism
+             output_ = output_parallel
