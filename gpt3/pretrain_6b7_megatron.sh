@@ -5,7 +5,7 @@
 
 set -e
 
-USAGE="usage: bash pretrain_6b7_megatron.sh [bf16|te|msamp]"
+USAGE="usage: bash pretrain_6b7_megatron.sh [bf16|te|msamp|fp4]"
 
 if [ "$#" -ne 1 ]; then
   echo $USAGE
@@ -106,6 +106,20 @@ elif [ "$FP_TYPE" = "te" ]; then
         --transformer-impl transformer_engine
 elif [ "$FP_TYPE" = "msamp" ]; then
     CHECKPOINT_PATH=$PWD/checkpoints/gpt_6b7_msamp
+    torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
+        $GPT_ARGS \
+        $DATA_ARGS \
+        $OUTPUT_ARGS \
+        --save $CHECKPOINT_PATH \
+        --load $CHECKPOINT_PATH \
+        --fp8-hybrid \
+        --transformer-impl transformer_engine \
+        --msamp
+elif [ "$FP_TYPE" = "fp4" ]; then
+    CHECKPOINT_PATH=$PWD/checkpoints/gpt_6b7_fp4
+    export USE_W_SIMU_FP4=1
+    export USE_W_DIFFERENTIABLE_GRADIENT_ESTIMATOR=1
+    export USE_A_SIMU_FP4=1
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \

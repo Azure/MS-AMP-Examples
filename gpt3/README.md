@@ -101,3 +101,28 @@ If you want to train GPT-3 with Megatron-LM using multiple nodes, you need:
   export NCCL_DEBUG=WARN
   ```
 - Use a parallel ssh tool to start the script on all nodes.
+
+## Using FP4 Training
+If you want to reproduce the training result from paper: [Optimizing Large Language Model Training Using FP4 Quantization](https://arxiv.org/abs/2501.17116), please do the following steps.
+
+1. Install [MS-AMP](https://github.com/Azure/MS-AMP). We recommand you [install from source](https://azure.github.io/MS-AMP/docs/getting-started/installation#install-from-source). If you're using the pre-installed MS-AMP [Docker container](https://azure.github.io/MS-AMP/docs/user-tutorial/container-images), you need to rebuild the msamp package to suppport the fp4 quantization feature using the following command:
+  ```bash
+  python3 -m pip install .
+  make postinstall
+  ```
+2. Install dependencies, Data preparation and Apply patch to Megatron-LM (following steps previously shown in this README file)
+3. Launch script:
+  ```bash
+  # for 345M model
+  bash pretrain_345m_megatron.sh fp4
+  # for 6.7B model
+  bash pretrain_6b7_megatron.sh fp4
+  # for 13B model
+  bash pretrain_13b_megatron.sh fp4
+  ```
+  In these scripts, you can adjust the environment variables to control the way of FP4 quantization. These are:
+  ```txt
+  export USE_W_SIMU_FP4=1   # control if weight quantization is used
+  export USE_W_DIFFERENTIABLE_GRADIENT_ESTIMATOR=1    # control if DGE(Differentiable Gradient Estimator) is used
+  export USE_A_SIMU_FP4=1   # control if activation quantization is used
+  ```
