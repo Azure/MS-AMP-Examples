@@ -107,6 +107,7 @@ If you want to reproduce the training result from paper: [Optimizing Large Langu
 
 1. Install [MS-AMP](https://github.com/Azure/MS-AMP). We recommand you [install from source](https://azure.github.io/MS-AMP/docs/getting-started/installation#install-from-source). If you're using the pre-installed MS-AMP [Docker container](https://azure.github.io/MS-AMP/docs/user-tutorial/container-images), you need to rebuild the msamp package to suppport the fp4 quantization feature using the following command:
   ```bash
+  cd MS-AMP
   python3 -m pip install .
   make postinstall
   ```
@@ -122,7 +123,7 @@ If you want to reproduce the training result from paper: [Optimizing Large Langu
   ```
   In these scripts, you can adjust the environment variables to control the way of FP4 quantization. These are:
   ```txt
-  export USE_W_SIMU_FP4=1   # control if weight quantization is used
-  export USE_W_DIFFERENTIABLE_GRADIENT_ESTIMATOR=1    # control if DGE(Differentiable Gradient Estimator) is used
-  export USE_A_SIMU_FP4=1   # control if activation quantization is used
+  export MSAMP_USE_WEIGHT_SIMULATE_FP4=1                          # control if weight quantization is used
+  export MSAMP_USE_WEIGHT_DIFFERENTIABLE_GRADIENT_ESTIMATOR=1     # control if DGE(Differentiable Gradient Estimator) is used
+  export MSAMP_USE_ACTIVATION_SIMULATE_FP4=1                      # control if activation quantization is used
   ```

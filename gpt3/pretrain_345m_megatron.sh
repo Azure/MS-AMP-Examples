@@ -105,9 +105,9 @@ elif [ "$FP_TYPE" = "msamp" ]; then
 
 elif [ "$FP_TYPE" = "fp4" ]; then
     CHECKPOINT_PATH=$PWD/checkpoints/gpt_345m_fp4
-    export USE_W_SIMU_FP4=1
-    export USE_W_DIFFERENTIABLE_GRADIENT_ESTIMATOR=1
-    export USE_A_SIMU_FP4=1
+    export MSAMP_USE_WEIGHT_SIMULATE_FP4=1
+    export MSAMP_USE_WEIGHT_DIFFERENTIABLE_GRADIENT_ESTIMATOR=1
+    export MSAMP_USE_ACTIVATION_SIMULATE_FP4=1
     torchrun $DISTRIBUTED_ARGS ../third_party/Megatron-LM/pretrain_gpt.py \
         $GPT_ARGS \
         $DATA_ARGS \
